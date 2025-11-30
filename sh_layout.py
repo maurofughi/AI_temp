@@ -548,7 +548,15 @@ def save_or_saveas_portfolio(
 
     # Helper: rebuild portfolio dropdown from registry
     def _build_portfolio_options_and_value(selected_id):
-        portfolios = list_portfolios()
+        """
+        Build dropdown options + current value from the *latest* registry.
+    
+        We read via load_registry() instead of list_portfolios() to avoid
+        any stale in-memory cache and always reflect the most recent save.
+        """
+        registry = load_registry() or {}
+        portfolios = registry.get("portfolios", [])
+    
         options = [
             {
                 "label": p.get("name", p.get("id", "UNKNOWN")),
@@ -560,7 +568,9 @@ def save_or_saveas_portfolio(
             )
             if "id" in p
         ]
+    
         return options, selected_id
+
 
     # No strategies selected -> nothing to save
     if not selected_strategy_ids:

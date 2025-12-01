@@ -48,6 +48,13 @@ ROLLING_MIN_TRADES_WIN = 10
 ROLLING_MIN_TRADES_TAIL = 10
 ROLLING_MIN_TRADES_DD = 10
 
+# --------------------------------------------------------------------
+# Overview metrics – initial equity & time constants - to be moved to settings
+# --------------------------------------------------------------------
+P1_INITIAL_EQUITY = 100_000.0          # used for CAGR/MAR/Sharpe (ann.)
+TRADING_DAYS_PER_YEAR = 252
+DAYS_PER_YEAR = 365.25
+
 # --------------- TIME CONSTANTS FOR PARAMETERS - MEAN R ENTRY TIME BUCKER SLIDERS
 TIME_MARKS = {
     570: "09:30",
@@ -64,6 +71,13 @@ TIME_MARKS = {
     900: "15:00",
     930: "15:30",
 }
+
+def _minutes_to_hhmm(m: float) -> str:
+    """Convert minutes-from-midnight into 'HH:MM' string."""
+    m_int = int(round(m))
+    h = m_int // 60
+    mm = m_int % 60
+    return f"{h:02d}:{mm:02d}"
 
 # --------------- VIX THRESHOLDS FOR PARAMETERS - MEAN R  VIX SLIDERS
 
@@ -2587,6 +2601,7 @@ def update_overview(selected_strategy_ids, mode):
     # ----------------------------------------------------------
     # Per-trade P&L statistics (for metrics)
     # ----------------------------------------------------------
+    
     pnl = all_trades["P/L"]
     n_trades = len(pnl)
     total_pnl = pnl.sum()
@@ -2594,14 +2609,13 @@ def update_overview(selected_strategy_ids, mode):
     # Basic stats
     win_mask = pnl > 0
     lose_mask = pnl < 0
-
     n_wins = int(win_mask.sum())
     n_losses = int(lose_mask.sum())
+
     win_rate = n_wins / n_trades if n_trades > 0 else 0.0
 
     avg_win = pnl[win_mask].mean() if n_wins > 0 else None
     avg_loss = pnl[lose_mask].mean() if n_losses > 0 else None
-
     if avg_win is not None and avg_loss is not None and avg_loss != 0:
         avg_win_loss_ratio = avg_win / abs(avg_loss)
     else:
@@ -2614,19 +2628,14 @@ def update_overview(selected_strategy_ids, mode):
     else:
         profit_factor = None
 
-    # Sharpe per-trade (unscaled)
-    pnl_std = pnl.std(ddof=1)
-    sharpe = pnl.mean() / pnl_std if pnl_std > 0 else None
-    
-        # Sortino per-trade (downside-only volatility, unscaled)
-    # Uses standard deviation of negative P&Ls as downside risk.
+    # Sortino per-trade (downside-only volatility, unscaled)
+    # Kept for potential future use, but not displayed in Overview.
     downside = pnl[pnl < 0]
     if len(downside) > 0:
         downside_std = downside.std(ddof=1)
         sortino = pnl.mean() / downside_std if downside_std > 0 else None
     else:
         sortino = None
-
 
     # Skewness & kurtosis (Fisher)
     skewness = pnl.skew() if n_trades > 2 else None
@@ -2657,12 +2666,10 @@ def update_overview(selected_strategy_ids, mode):
     else:
         pct_top5pct = None
 
-
-
     # ----------------------------------------------------------
-    # Equity and drawdown (aggregated and per-strategy)
+    # Equity, drawdown, daily returns (aggregated and per-strategy)
     # ----------------------------------------------------------
-    # Equity per strategy
+    # Equity per strategy (cum P&L, starting from 0) – for charts
     per_strat_equity = {}
     for sid in selected_strategy_ids:
         df_sid = all_trades[all_trades["strategy_id"] == sid].copy()
@@ -2672,7 +2679,7 @@ def update_overview(selected_strategy_ids, mode):
         eq = df_sid["P/L"].cumsum()
         per_strat_equity[sid] = pd.Series(eq.values, index=df_sid["Date Closed"].values)
 
-    # Aggregated equity (by day)
+    # Aggregated daily P&L and cumulative P&L (starting at 0)
     daily_pnl = (
         all_trades.groupby("Date Closed")["P/L"].sum().sort_index()
     )
@@ -2684,14 +2691,56 @@ def update_overview(selected_strategy_ids, mode):
         cummax = series.cummax()
         return series - cummax
 
+    # Drawdown in dollars for charts (same whether we shift by initial equity or not)
     agg_dd = compute_dd(agg_equity)
     max_dd = agg_dd.min() if not agg_dd.empty else 0.0
-    mar_ratio = (
-        total_pnl / abs(max_dd) if max_dd < 0 else None
-    )
 
     # ----------------------------------------------------------
-    # Build equity figure
+    # Equity including initial capital, CAGR, DD%, annualised Sharpe
+    # ----------------------------------------------------------
+    if not agg_equity.empty:
+        equity = P1_INITIAL_EQUITY + agg_equity
+        equity = equity.sort_index()
+
+        # CAGR based on first/last equity date
+        start_date = equity.index[0]
+        end_date = equity.index[-1]
+        n_days = (end_date - start_date).days
+        if n_days > 0 and equity.iloc[-1] > 0:
+            years = n_days / DAYS_PER_YEAR
+            cagr = (equity.iloc[-1] / P1_INITIAL_EQUITY) ** (1.0 / years) - 1.0
+        else:
+            cagr = None
+
+        # Max DD in percentage (relative to running peak equity)
+        cummax_eq = equity.cummax()
+        dd_pct_series = (equity - cummax_eq) / cummax_eq.replace(0, np.nan)
+        max_dd_pct = dd_pct_series.min() if not dd_pct_series.empty else None
+
+        # Daily returns & annualised Sharpe (Option A: daily, √252)
+        daily_returns = equity.pct_change().dropna()
+        if len(daily_returns) >= 2:
+            ret_mean = daily_returns.mean()
+            ret_std = daily_returns.std(ddof=1)
+            if ret_std > 0:
+                sharpe_annual = (ret_mean / ret_std) * np.sqrt(TRADING_DAYS_PER_YEAR)
+            else:
+                sharpe_annual = None
+        else:
+            sharpe_annual = None
+    else:
+        cagr = None
+        max_dd_pct = None
+        sharpe_annual = None
+
+    # MAR in OO style: CAGR / |MaxDD%|
+    if cagr is not None and max_dd_pct is not None and max_dd_pct < 0:
+        mar_ratio = cagr / abs(max_dd_pct)
+    else:
+        mar_ratio = None
+
+    # ----------------------------------------------------------
+    # Build equity figure (same as before, cum P&L)
     # ----------------------------------------------------------
     equity_traces = []
     if mode == "cumulative":
@@ -2704,7 +2753,8 @@ def update_overview(selected_strategy_ids, mode):
                     name="Combined",
                 )
             )
-    else:  # individual
+    else:
+        # individual
         for sid, series in per_strat_equity.items():
             if series.empty:
                 continue
@@ -2730,7 +2780,7 @@ def update_overview(selected_strategy_ids, mode):
     equity_fig = go.Figure(data=equity_traces, layout=equity_layout)
 
     # ----------------------------------------------------------
-    # Build drawdown figure
+    # Build drawdown figure (same as before, in $)
     # ----------------------------------------------------------
     dd_traces = []
     if mode == "cumulative":
@@ -2768,6 +2818,14 @@ def update_overview(selected_strategy_ids, mode):
         legend={"orientation": "h", "y": -0.2},
     )
     dd_fig = go.Figure(data=dd_traces, layout=dd_layout)
+
+    # ----------------------------------------------------------
+    # Monthly returns heatmap (aggregated)
+    # ----------------------------------------------------------
+    if not daily_pnl.empty:
+        monthly = daily_pnl.resample("ME").sum()
+        ...
+
 
     # ----------------------------------------------------------
     # Monthly returns heatmap (aggregated)
@@ -2909,12 +2967,12 @@ def update_overview(selected_strategy_ids, mode):
                 dbc.Card(
                     [
                         dbc.CardHeader(
-                            "Max DD",
+                            "Max DD (%)",
                             className="py-1 px-2",
                             style=header_style,
                         ),
                         dbc.CardBody(
-                            fmt_money(max_dd),
+                            fmt_pct(max_dd_pct, 2),
                             className="py-1 px-2",
                             style=body_style,
                         ),
@@ -2945,12 +3003,12 @@ def update_overview(selected_strategy_ids, mode):
                 dbc.Card(
                     [
                         dbc.CardHeader(
-                            "Sharpe (per trade)",
+                            "CAGR",
                             className="py-1 px-2",
                             style=header_style,
                         ),
                         dbc.CardBody(
-                            fmt_number(sharpe, 2),
+                            fmt_pct(cagr, 2),
                             className="py-1 px-2",
                             style=body_style,
                         ),
@@ -2963,12 +3021,12 @@ def update_overview(selected_strategy_ids, mode):
                 dbc.Card(
                     [
                         dbc.CardHeader(
-                            "Sortino (per trade)",
+                            "Sharpe (ann.)",
                             className="py-1 px-2",
                             style=header_style,
                         ),
                         dbc.CardBody(
-                            fmt_number(sortino, 2),
+                            fmt_number(sharpe_annual, 2),
                             className="py-1 px-2",
                             style=body_style,
                         ),
@@ -3016,6 +3074,7 @@ def update_overview(selected_strategy_ids, mode):
         ],
         className="g-2",
     )
+
 
     bottom_row = dbc.Row(
         [
@@ -3323,74 +3382,98 @@ def update_parameters(
                 trig = ctx.triggered_id
                 auto_clicks = n_auto or 0
                 manual_clicks = n_manual or 0
-
+        
                 if trig == "p1-param-entry-mode-manual":
                     manual_mode = True
                 elif trig == "p1-param-entry-mode-auto":
                     manual_mode = False
                 else:
                     manual_mode = manual_clicks > auto_clicks
-
+        
                 if manual_mode:
                     # MANUAL: use slider boundaries (minutes)
                     bounds = [v for v in (s1, s2, s3) if v is not None]
                     bounds = sorted(bounds)
-                    # Clamp to [570, 930] if you want to keep it in RTH
+                    # Clamp to [570, 930]
                     bounds = [max(570, min(930, b)) for b in bounds]
+        
+                    # Final bin edges (including start/end)
                     bins = [570] + bounds + [930]
-                    
-                    # Remove duplicates and sort to avoid ValueError in pd.cut
-                    bins = sorted(set(bins))
-                    
-                    # Rebuild labels to match the final bin edges
-                    labels = [f"Bucket {i+1}" for i in range(len(bins) - 1)]
-                    df_t.loc[:, "bucket"] = pd.cut(
-                        df_t["t_min"],
-                        bins=bins,
-                        labels=labels,
-                        include_lowest=True,
-                        right=True,
-                    )
+                    bins = sorted(set(bins))  # remove duplicates, keep ordered
+        
+                    if len(bins) < 2:
+                        fig_time = _empty_fig("Mean R vs entry time bucket (no valid buckets)")
+                    else:
+                        # Labels as time ranges, e.g. '09:30–10:30'
+                        labels = [
+                            f"{_minutes_to_hhmm(bins[i])}–{_minutes_to_hhmm(bins[i + 1])}"
+                            for i in range(len(bins) - 1)
+                        ]
+        
+                        df_t.loc[:, "bucket"] = pd.cut(
+                            df_t["t_min"],
+                            bins=bins,
+                            labels=labels,
+                            include_lowest=True,
+                            right=True,
+                        )
                 else:
                     # AUTO: quantiles on t_min
                     q = df_t["t_min"].quantile([0, 0.25, 0.5, 0.75, 1]).values
-                    q = sorted(set(int(x) for x in q))
-                    if len(q) < 2:
-                        q = [df_t["t_min"].min(), df_t["t_min"].max()]
-                    df_t.loc[:, "bucket"] = pd.cut(
-                        df_t["t_min"],
-                        bins=q,
-                        include_lowest=True,
-                        right=True,
-                    )
-
-                grp_t = (
-                    df_t.dropna(subset=["bucket"])
-                    .groupby("bucket", observed=False)["R"]
-                    .mean()
-                    .reset_index()
-                )
-                if grp_t.empty:
+                    bins = sorted(set(int(x) for x in q))
+        
+                    if len(bins) < 2:
+                        bins = [df_t["t_min"].min(), df_t["t_min"].max()]
+        
+                    if len(bins) < 2:
+                        fig_time = _empty_fig("Mean R vs entry time bucket (no valid buckets)")
+                    else:
+                        labels = [
+                            f"{_minutes_to_hhmm(bins[i])}–{_minutes_to_hhmm(bins[i + 1])}"
+                            for i in range(len(bins) - 1)
+                        ]
+        
+                        df_t.loc[:, "bucket"] = pd.cut(
+                            df_t["t_min"],
+                            bins=bins,
+                            labels=labels,
+                            include_lowest=True,
+                            right=True,
+                        )
+        
+                # Group & plot (shared for both modes)
+                if "bucket" not in df_t.columns:
                     fig_time = _empty_fig("Mean R vs entry time bucket (no buckets)")
                 else:
-                    fig_time = go.Figure(
-                        data=[
-                            go.Bar(
-                                x=grp_t["bucket"].astype(str),
-                                y=grp_t["R"],
-                                text=grp_t["R"].round(3),
-                                textposition="outside",
-                            )
-                        ]
+                    grp_t = (
+                        df_t.dropna(subset=["bucket"])
+                        .groupby("bucket", observed=False)["R"]
+                        .mean()
+                        .reset_index()
                     )
-                    fig_time.update_layout(
-                        template="plotly_dark",
-                        title="Mean R vs entry time bucket",
-                        xaxis_title="Entry time bucket",
-                        yaxis_title="Mean R per trade",
-                        paper_bgcolor="#222222",
-                        plot_bgcolor="#222222",
-                    )
+        
+                    if grp_t.empty:
+                        fig_time = _empty_fig("Mean R vs entry time bucket (no buckets)")
+                    else:
+                        fig_time = go.Figure(
+                            data=[
+                                go.Bar(
+                                    x=grp_t["bucket"].astype(str),
+                                    y=grp_t["R"],
+                                    text=grp_t["R"].round(3),
+                                    textposition="outside",
+                                )
+                            ]
+                        )
+                        fig_time.update_layout(
+                            template="plotly_dark",
+                            title="Mean R vs entry time bucket",
+                            xaxis_title="Entry time bucket",
+                            yaxis_title="Mean R per trade",
+                            paper_bgcolor="#222222",
+                            plot_bgcolor="#222222",
+                        )
+                
     else:
         fig_time = _empty_fig("Mean R vs entry time bucket (no time/R)")
 
@@ -5026,13 +5109,24 @@ def update_p1_overfit_bootstrap(
             style={"color": "#AAAAAA"},
         )
 
+    # Original per-trade Sharpe
+    # vals = prep["series"]
+    # metric_label = prep["metric_label"]
+    # # Baseline Sharpe
+    # mean_val = float(vals.mean())
+    # std_val = float(vals.std(ddof=1)) if prep["n_trades"] > 1 else 0.0
+    # sharpe = (mean_val / std_val) if std_val > 0 else np.nan
+    
     vals = prep["series"]
     metric_label = prep["metric_label"]
-
-    # Baseline Sharpe
+    
+    # Baseline Sharpe (annualised, treating each trade as one period)
     mean_val = float(vals.mean())
     std_val = float(vals.std(ddof=1)) if prep["n_trades"] > 1 else 0.0
-    sharpe = (mean_val / std_val) if std_val > 0 else np.nan
+    if std_val > 0:
+        sharpe = (mean_val / std_val) * (252 ** 0.5)
+    else:
+        sharpe = np.nan
 
     # Inputs
     try:
@@ -5053,11 +5147,21 @@ def update_p1_overfit_bootstrap(
         fig = empty_fig()
         prob_lt0 = np.nan
         q5 = q50 = q95 = np.nan
+    # Original per-trade Sharpe
+    # else:
+    #     prob_lt0 = float((boot_sharpes < 0).mean())
+    #     q5, q50, q95 = np.percentile(boot_sharpes, [5, 50, 95])
+
+    #     hist_counts, hist_edges = np.histogram(boot_sharpes, bins=30)
+    
     else:
+        # Annualise the bootstrap Sharpe values using the same √252 factor
+        boot_sharpes = boot_sharpes * (252 ** 0.5)
+    
         prob_lt0 = float((boot_sharpes < 0).mean())
         q5, q50, q95 = np.percentile(boot_sharpes, [5, 50, 95])
-
         hist_counts, hist_edges = np.histogram(boot_sharpes, bins=30)
+
 
         fig = go.Figure()
         fig.add_trace(

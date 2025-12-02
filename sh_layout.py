@@ -230,6 +230,7 @@ def build_data_input_section(folder_info, folder_checklist, portfolio_options):
                                         "Hide / Show Data Input",
                                         id="p1-toggle-data-panel",
                                         color="success",
+                                        outline=True,
                                         size="sm",
                                     ),
                                     dcc.Input(

@@ -16,14 +16,18 @@ import dash_bootstrap_components as dbc
 from dash import html, dcc, Input, Output, State, callback, ctx
 
 from core.registry import (
-    load_registry,
+    get_registry,
     add_or_update_strategy,
-    list_strategies,
-    set_phase1_active_flags,
-    list_portfolios,
-    get_portfolio,
     add_or_update_portfolio,
+    list_portfolio_options,
+    list_portfolios,
+    get_strategy,
+    get_portfolio,
+    set_phase1_active_flags,
+    get_phase1_active_uids,
+    list_strategies,
 )
+
 
 # In-memory store for strategies loaded in this session (shared across pages)
 # Key: strategy_id, Value: dict with metadata (id, name, file_path, cached df, etc.)
@@ -501,7 +505,7 @@ def sync_registry_phase1_active(selected_ids):
     set_phase1_active_flags(selected_ids)
 
     # Read back for a quick summary
-    registry = load_registry()
+    registry = get_registry()
     n_total = len(registry.get("strategies", []))
 
     return {
@@ -555,7 +559,7 @@ def save_or_saveas_portfolio(
         We read via load_registry() instead of list_portfolios() to avoid
         any stale in-memory cache and always reflect the most recent save.
         """
-        registry = load_registry() or {}
+        registry = get_registry() or {}
         portfolios = registry.get("portfolios", [])
     
         options = [

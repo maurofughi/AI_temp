@@ -1,0 +1,298 @@
+{
+  "portfolios": [
+    {
+      "created_at": "2025-11-22T18:20:41",
+      "id": "ph1::Test1::20251122182041",
+      "name": "Test1",
+      "phase1_done": true,
+      "strategy_ids": [
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-RIC-VIX-down-move-up-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-PCS-Tue-Fri-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_31Oct2025.csv"
+      ],
+      "updated_at": "2025-11-27T15:08:00"
+    },
+    {
+      "created_at": "2025-11-22T18:21:31",
+      "id": "ph1::Test2::20251122182131",
+      "name": "Test2",
+      "phase1_done": true,
+      "strategy_ids": [
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-RIC-VIX-down-move-up-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-PCS-Tue-Fri-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_30Sep2025.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_15Sep2025.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_15Oct2025.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_31Oct2025.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_15Nov2025.csv"
+      ],
+      "updated_at": "2025-11-22T18:40:49"
+    },
+    {
+      "created_at": "2025-11-22T18:23:01",
+      "id": "ph1::Test3::20251122182301",
+      "name": "Test3",
+      "phase1_done": true,
+      "strategy_ids": [
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-RIC-VIX-down-move-up-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-PCS-Tue-Fri-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_15Sep2025.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_31Oct2025.csv",
+        "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\dataupl\\trade-log__46__20251123134414.csv"
+      ],
+      "updated_at": "2025-11-27T15:07:41"
+    },
+    {
+      "created_at": "2025-11-22T18:23:37",
+      "id": "ph1::Test4::20251122182337",
+      "name": "Test4",
+      "phase1_done": true,
+      "strategy_ids": [
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-RIC-VIX-down-move-up-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-PCS-Tue-Fri-MECH.csv",
+        "upload::Trades (4).csv",
+        "upload::iv_160_[10, 42]_[5, 15, 25] (1).csv"
+      ],
+      "updated_at": "2025-11-29T09:35:28"
+    },
+    {
+      "created_at": "2025-11-22T18:32:36",
+      "id": "ph1::Test5::20251122183236",
+      "name": "Test5",
+      "phase1_done": true,
+      "strategy_ids": [
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-PCS-Tue-Fri-MECH.csv",
+        "upload::iv_160_[10, 42]_[5, 15, 25] (1).csv"
+      ],
+      "updated_at": "2025-11-22T18:38:36"
+    },
+    {
+      "created_at": "2025-11-22T18:38:05",
+      "id": "ph1::Test6::20251122183805",
+      "name": "Test6",
+      "phase1_done": true,
+      "strategy_ids": [
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_30Sep2025.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-RIC-VIX-down-move-up-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-PCS-Tue-Fri-MECH.csv",
+        "upload::MF-MECH-PORT-v1.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_31Oct2025.csv"
+      ],
+      "updated_at": "2025-11-22T18:38:05"
+    },
+    {
+      "created_at": "2025-11-23T13:44:28",
+      "id": "ph1::Test7::20251123134428",
+      "name": "Test7",
+      "phase1_done": true,
+      "strategy_ids": [
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-PCS-Tue-Fri-MECH.csv",
+        "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\dataupl\\trade-log__46__20251123134414.csv"
+      ],
+      "updated_at": "2025-11-23T13:46:29"
+    },
+    {
+      "created_at": "2025-11-29T09:36:30",
+      "id": "ph1::Test8::20251129093630",
+      "name": "Test8",
+      "phase1_done": true,
+      "strategy_ids": [
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-RIC-VIX-down-move-up-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-PCS-Tue-Fri-MECH.csv",
+        "upload::iv_160_[10, 42]_[5, 15, 25] (1).csv"
+      ],
+      "updated_at": "2025-11-29T14:01:38"
+    },
+    {
+      "created_at": "2025-11-29T14:03:09",
+      "id": "ph1::Test9::20251129140309",
+      "name": "Test9",
+      "phase1_done": true,
+      "strategy_ids": [
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-PCS-Tue-Fri-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-RIC-VIX-down-move-up-MECH.csv"
+      ],
+      "updated_at": "2025-11-29T14:04:12"
+    },
+    {
+      "created_at": "2025-11-29T14:04:54",
+      "id": "ph1::Test10::20251129140454",
+      "name": "Test10",
+      "phase1_done": true,
+      "strategy_ids": [
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv"
+      ],
+      "updated_at": "2025-11-29T14:04:54"
+    },
+    {
+      "created_at": "2025-11-29T14:41:09",
+      "id": "ph1::Test11::20251129144108",
+      "name": "Test11",
+      "phase1_done": true,
+      "strategy_ids": [
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-PCS-Tue-Fri-MECH.csv",
+        "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\dataupl\\trade-log__46__20251123134414.csv",
+        "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-RIC-VIX-down-move-up-MECH.csv",
+        "upload::MF-MECH-PORT-v1.csv"
+      ],
+      "updated_at": "2025-11-29T14:41:09"
+    }
+  ],
+  "strategies": [
+    {
+      "date_added": "2025-11-22T18:20:41",
+      "date_updated": "2025-11-29T14:41:08",
+      "file_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv",
+      "folder": "Strat01",
+      "id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv",
+      "n_rows": 62,
+      "name": "18-45-WED-10-DTE-RIC-SMA-Crossover",
+      "phase1_active": false,
+      "source": "folder"
+    },
+    {
+      "date_added": "2025-11-22T18:20:41",
+      "date_updated": "2025-11-29T14:41:09",
+      "file_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+      "folder": "Strat01",
+      "id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+      "n_rows": 245,
+      "name": "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH",
+      "phase1_active": false,
+      "source": "folder"
+    },
+    {
+      "date_added": "2025-11-22T18:20:41",
+      "date_updated": "2025-11-29T14:41:09",
+      "file_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-RIC-VIX-down-move-up-MECH.csv",
+      "folder": "Strat01",
+      "id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-RIC-VIX-down-move-up-MECH.csv",
+      "n_rows": 0,
+      "name": "0-DTE-RIC-VIX-down-move-up-MECH",
+      "phase1_active": true,
+      "source": "folder"
+    },
+    {
+      "date_added": "2025-11-22T18:20:41",
+      "date_updated": "2025-11-29T14:41:09",
+      "file_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-PCS-Tue-Fri-MECH.csv",
+      "folder": "Strat01",
+      "id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat01\\0-DTE-PCS-Tue-Fri-MECH.csv",
+      "n_rows": 361,
+      "name": "0-DTE-PCS-Tue-Fri-MECH",
+      "phase1_active": true,
+      "source": "folder"
+    },
+    {
+      "date_added": "2025-11-22T18:21:31",
+      "date_updated": "2025-11-22T18:40:49",
+      "file_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_30Sep2025.csv",
+      "folder": "Strat02",
+      "id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_30Sep2025.csv",
+      "n_rows": 462,
+      "name": "FOLD. EMA_FULL_BASE_30Sep2025",
+      "phase1_active": false,
+      "source": "folder"
+    },
+    {
+      "date_added": "2025-11-22T18:21:31",
+      "date_updated": "2025-11-27T15:07:41",
+      "file_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_15Sep2025.csv",
+      "folder": "Strat02",
+      "id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_15Sep2025.csv",
+      "n_rows": 420,
+      "name": "FOLD. EMA_FULL_BASE_15Sep2025",
+      "phase1_active": true,
+      "source": "folder"
+    },
+    {
+      "date_added": "2025-11-22T18:21:31",
+      "date_updated": "2025-11-22T18:40:49",
+      "file_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_15Oct2025.csv",
+      "folder": "Strat02",
+      "id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_15Oct2025.csv",
+      "n_rows": 462,
+      "name": "FOLD. EMA_FULL_BASE_15Oct2025",
+      "phase1_active": false,
+      "source": "folder"
+    },
+    {
+      "date_added": "2025-11-22T18:21:31",
+      "date_updated": "2025-11-27T15:08:00",
+      "file_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_31Oct2025.csv",
+      "folder": "Strat02",
+      "id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_31Oct2025.csv",
+      "n_rows": 504,
+      "name": "FOLD. EMA_FULL_BASE_31Oct2025",
+      "phase1_active": true,
+      "source": "folder"
+    },
+    {
+      "date_added": "2025-11-22T18:21:31",
+      "date_updated": "2025-11-22T18:40:49",
+      "file_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_15Nov2025.csv",
+      "folder": "Strat02",
+      "id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Strat02\\EMA_FULL_BASE_15Nov2025.csv",
+      "n_rows": 420,
+      "name": "FOLD. EMA_FULL_BASE_15Nov2025",
+      "phase1_active": false,
+      "source": "folder"
+    },
+    {
+      "date_added": "2025-11-22T18:23:37",
+      "date_updated": "2025-11-29T09:36:30",
+      "file_path": "upload::Trades (4).csv",
+      "folder": "(unknown)",
+      "id": "upload::Trades (4).csv",
+      "n_rows": 0,
+      "name": "upload::Trades (4)",
+      "phase1_active": false,
+      "source": "folder"
+    },
+    {
+      "date_added": "2025-11-22T18:32:36",
+      "date_updated": "2025-11-29T14:01:38",
+      "file_path": "upload::iv_160_[10, 42]_[5, 15, 25] (1).csv",
+      "folder": "(unknown)",
+      "id": "upload::iv_160_[10, 42]_[5, 15, 25] (1).csv",
+      "n_rows": 0,
+      "name": "upload::iv_160_[10, 42]_[5, 15, 25] (1)",
+      "phase1_active": false,
+      "source": "folder"
+    },
+    {
+      "date_added": "2025-11-22T18:38:05",
+      "date_updated": "2025-11-29T14:41:09",
+      "file_path": "upload::MF-MECH-PORT-v1.csv",
+      "folder": "(unknown)",
+      "id": "upload::MF-MECH-PORT-v1.csv",
+      "n_rows": 0,
+      "name": "upload::MF-MECH-PORT-v1",
+      "phase1_active": false,
+      "source": "folder"
+    },
+    {
+      "date_added": "2025-11-23T13:44:28",
+      "date_updated": "2025-11-29T14:41:09",
+      "file_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\dataupl\\trade-log__46__20251123134414.csv",
+      "folder": "dataupl",
+      "id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\dataupl\\trade-log__46__20251123134414.csv",
+      "n_rows": 918,
+      "name": "trade-log__46__20251123134414",
+      "phase1_active": true,
+      "source": "upload"
+    }
+  ],
+  "version": 1
+}

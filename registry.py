@@ -5,330 +5,308 @@ Created on Sat Nov 22 08:20:53 2025
 @author: mauro
 """
 
-# -*- coding: utf-8 -*-
 """
-Central registry for strategies and portfolios in the Portfolio26 app.
+Central registry for strategies loaded in the app.
 
-This module is the *only* place that reads/writes `registry.json`.
+This module exposes a single shared dictionary:
+    strategy_registry
 
-Key design points (new schema, Dec 2025):
-- Strategies have synthetic UIDs ("S000001", ...), *never* external paths.
-- Portfolios reference strategies only by UID.
-- External folder paths are kept only as optional metadata (source_path, source_folder).
-- The app's data directory (internal_path) is the only persistent source of CSVs.
+All pages should import and mutate this object, not create their own copies.
 """
 
 import json
 import os
+from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-# ---------------------------------------------------------------------------
-# Paths & globals
-# ---------------------------------------------------------------------------
-
-THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-REGISTRY_PATH = os.path.join(THIS_DIR, "registry.json")
-
-# Global in-memory cache
-_strategy_registry: Dict[str, Any] = {}
+# Registry JSON file path: same folder as this registry.py
+REGISTRY_FILE = Path(__file__).with_name("registry.json")
 
 
-# ---------------------------------------------------------------------------
-# Helpers: loading / saving
-# ---------------------------------------------------------------------------
-
-def _now_iso() -> str:
-    return datetime.utcnow().replace(microsecond=0).isoformat()
-
-
-def _empty_registry() -> Dict[str, Any]:
+def _default_registry() -> Dict[str, Any]:
+    """
+    Default empty registry structure.
+    It is intentionally simple and extensible.
+    """
     return {
-        "next_strategy_uid": 1,
-        "next_portfolio_uid": 1,
-        "strategies": [],
-        "portfolios": [],
+        "version": 1,
+        "strategies": [],  # list of strategy dicts
+        "portfolios": [],  # list of portfolio dicts
     }
 
 
-def _load_registry_from_disk() -> Dict[str, Any]:
-    if not os.path.exists(REGISTRY_PATH):
-        return _empty_registry()
+
+def _ensure_registry_file_exists() -> None:
+    """
+    Create an empty registry file if it does not exist yet.
+    """
+    if not REGISTRY_FILE.exists():
+        registry = _default_registry()
+        save_registry(registry)
+
+
+def load_registry() -> Dict[str, Any]:
+    """
+    Load the registry from disk.
+
+    - If the file does not exist, create it with a default registry and return that.
+    - If the file is temporarily unreadable/corrupted (e.g. partial write),
+      we do NOT overwrite the file; we just fall back to a default in memory.
+    """
+    _ensure_registry_file_exists()
+
     try:
-        with open(REGISTRY_PATH, "r", encoding="utf-8") as f:
+        with REGISTRY_FILE.open("r", encoding="utf-8") as f:
             data = json.load(f)
-        # Basic sanity checks; if missing keys, re-initialise.
-        if not isinstance(data, dict):
-            return _empty_registry()
-        if "strategies" not in data or "portfolios" not in data:
-            return _empty_registry()
-        if "next_strategy_uid" not in data or "next_portfolio_uid" not in data:
-            data.setdefault("next_strategy_uid", 1)
-            data.setdefault("next_portfolio_uid", 1)
-        return data
-    except Exception:
-        # On any parse error, start fresh (better than crashing the app).
-        return _empty_registry()
+    except (json.JSONDecodeError, OSError):
+        # Do NOT overwrite the file here; just return a default structure
+        data = _default_registry()
+
+    # Basic sanity: ensure dict
+    if not isinstance(data, dict):
+        data = _default_registry()
+
+    # Ensure expected keys/types
+    if not isinstance(data.get("strategies"), list):
+        data["strategies"] = []
+
+    if not isinstance(data.get("portfolios"), list):
+        data["portfolios"] = []
+
+    if "version" not in data:
+        data["version"] = 1
+
+    return data
 
 
-def _ensure_loaded() -> None:
-    global _strategy_registry
-    if not _strategy_registry:
-        _strategy_registry = _load_registry_from_disk()
 
 
-def save_registry(registry: Optional[Dict[str, Any]] = None) -> None:
+def save_registry(registry: Dict[str, Any]) -> None:
     """
-    Persist the current registry to disk.
+    Save the registry to disk.
 
-    If `registry` is provided, it becomes the global object.
+    Preferred path: atomic write via temp file + replace.
+    On Windows, if os.replace / Path.replace raises PermissionError
+    (file locked by AV/editor/other process), fall back to a direct write.
     """
-    global _strategy_registry
-    if registry is not None:
-        _strategy_registry = registry
+    tmp_path = REGISTRY_FILE.with_suffix(REGISTRY_FILE.suffix + ".tmp")
 
-    if not _strategy_registry:
-        _strategy_registry = _empty_registry()
+    try:
+        # 1) Write to temp file
+        with tmp_path.open("w", encoding="utf-8") as f:
+            json.dump(registry, f, indent=2, sort_keys=True)
+            f.flush()
+            os.fsync(f.fileno())
 
-    os.makedirs(os.path.dirname(REGISTRY_PATH), exist_ok=True)
-    with open(REGISTRY_PATH, "w", encoding="utf-8") as f:
-        json.dump(_strategy_registry, f, indent=2, sort_keys=False)
+        # 2) Try atomic replace
+        try:
+            tmp_path.replace(REGISTRY_FILE)
+        except PermissionError:
+            # Fallback: direct write to target file if replace is blocked
+            with REGISTRY_FILE.open("w", encoding="utf-8") as f:
+                json.dump(registry, f, indent=2, sort_keys=True)
 
-
-def get_registry() -> Dict[str, Any]:
-    """
-    Get the live registry dict (loaded once and cached).
-    """
-    _ensure_loaded()
-    return _strategy_registry
-
-
-# ---------------------------------------------------------------------------
-# UID generators
-# ---------------------------------------------------------------------------
-
-def _format_uid(prefix: str, num: int) -> str:
-    return f"{prefix}{num:06d}"
-
-
-def _next_strategy_uid(registry: Dict[str, Any]) -> str:
-    n = registry.get("next_strategy_uid", 1)
-    uid = _format_uid("S", n)
-    registry["next_strategy_uid"] = n + 1
-    return uid
+    finally:
+        # 3) Best-effort cleanup of temp file if it still exists
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            # Ignore cleanup errors
+            pass
 
 
-def _next_portfolio_uid(registry: Dict[str, Any]) -> str:
-    n = registry.get("next_portfolio_uid", 1)
-    uid = _format_uid("P", n)
-    registry["next_portfolio_uid"] = n + 1
-    return uid
-
-
-# ---------------------------------------------------------------------------
-# Strategy operations
-# ---------------------------------------------------------------------------
 
 def list_strategies() -> List[Dict[str, Any]]:
-    reg = get_registry()
-    return reg.get("strategies", [])
+    """
+    Convenience wrapper: return the list of strategies from the registry.
+    """
+    registry = load_registry()
+    return registry.get("strategies", [])
 
 
-def _find_strategy_index(strategies: List[Dict[str, Any]], uid: str) -> int:
+def _find_strategy_index(strategies: List[Dict[str, Any]], strategy_id: str) -> int:
+    """
+    Return index of the strategy with the given id, or -1 if not found.
+    """
     for i, s in enumerate(strategies):
-        if s.get("uid") == uid:
+        if s.get("id") == strategy_id:
             return i
     return -1
 
 
-def get_strategy(uid: str) -> Optional[Dict[str, Any]]:
+def get_strategy(strategy_id: str) -> Optional[Dict[str, Any]]:
     """
-    Get a single strategy by UID. Returns None if not found.
+    Get a single strategy by id. Returns None if not found.
     """
-    reg = get_registry()
-    strategies = reg.get("strategies", [])
-    idx = _find_strategy_index(strategies, uid)
+    strategies = list_strategies()
+    idx = _find_strategy_index(strategies, strategy_id)
     if idx == -1:
         return None
     return strategies[idx]
 
 
-def add_or_update_strategy(strategy: Dict[str, Any]) -> Dict[str, Any]:
+def add_or_update_strategy(strategy: Dict[str, Any]) -> None:
     """
-    Insert or update a strategy in the registry.
+    Add a new strategy or update an existing one.
 
-    Expected fields in `strategy`:
-        - uid (optional on insert; ignored on update if present)
-        - name
-        - internal_path
-        - source_path (optional)
-        - source_folder (optional)
-        - n_rows (optional)
-        - phase1_active (optional)
+    Required fields in 'strategy':
+        - id: unique identifier (string)
+        - name: human-readable name
+        - file_path: path to the CSV/log file for this strategy
+
+    Any non-serializable / heavy fields (e.g. 'df') are stripped
+    before saving to the JSON registry.
     """
-    reg = get_registry()
-    strategies = reg.get("strategies", [])
+    # Work on a shallow copy and remove non-serializable fields
+    strategy = dict(strategy)
+    strategy.pop("df", None)  # df only lives in memory, not in JSON
 
-    uid = strategy.get("uid")
-    now = _now_iso()
+    required = ["id", "name", "file_path"]
+    missing = [k for k in required if k not in strategy or not strategy[k]]
+    if missing:
+        raise ValueError(f"Missing required fields in strategy: {missing}")
 
-    if uid:
-        # Update existing if found
-        idx = _find_strategy_index(strategies, uid)
-        if idx != -1:
-            existing = strategies[idx]
-            created = existing.get("created_at")
-            merged = dict(existing)
-            merged.update(strategy)
-            merged["uid"] = uid
-            merged["id"] = uid  # keep legacy "id" field equal to uid
-            merged["updated_at"] = now
-            if created:
-                merged["created_at"] = created
-            strategies[idx] = merged
-        else:
-            # uid provided but not found; treat as new
-            strategy_uid = uid
-            strategy["uid"] = strategy_uid
-            strategy["id"] = strategy_uid
-            strategy.setdefault("created_at", now)
-            strategy["updated_at"] = now
-            strategies.append(strategy)
-    else:
-        # New strategy, assign UID
-        strategy_uid = _next_strategy_uid(reg)
-        strategy["uid"] = strategy_uid
-        strategy["id"] = strategy_uid
-        strategy.setdefault("created_at", now)
-        strategy["updated_at"] = now
+    registry = load_registry()
+    strategies = registry.get("strategies", [])
+
+
+    # set metadata if not already present
+    now_iso = datetime.now().isoformat(timespec="seconds")
+    if "date_added" not in strategy:
+        strategy["date_added"] = now_iso
+    # date_updated is always refreshed
+    strategy["date_updated"] = now_iso
+
+    idx = _find_strategy_index(strategies, strategy["id"])
+
+    if idx == -1:
+        # New strategy
         strategies.append(strategy)
+    else:
+        # Update existing; keep previous date_added if present
+        existing = strategies[idx]
+        if "date_added" in existing and "date_added" in strategy:
+            strategy["date_added"] = existing["date_added"]
+        strategies[idx] = strategy
 
-    reg["strategies"] = strategies
-    save_registry(reg)
-    return get_strategy(strategy.get("uid", strategy_uid))
+    registry["strategies"] = strategies
+    save_registry(registry)
 
 
-def set_phase1_active_flags(active_uids: List[str]) -> None:
+def remove_strategy(strategy_id: str) -> bool:
     """
-    Mark which strategies are currently active in Phase 1.
-
-    Any strategy whose uid is in `active_uids` will have phase1_active=True;
-    all others will have phase1_active=False.
+    Remove a strategy by id.
+    Returns True if something was removed, False if the id was not found.
     """
-    reg = get_registry()
-    strategies = reg.get("strategies", [])
-    active_set = set(active_uids or [])
+    registry = load_registry()
+    strategies = registry.get("strategies", [])
+    idx = _find_strategy_index(strategies, strategy_id)
+    if idx == -1:
+        return False
+
+    del strategies[idx]
+    registry["strategies"] = strategies
+    save_registry(registry)
+    return True
+
+
+def clear_registry(confirm: bool = False) -> None:
+    """
+    Wipe the registry completely (for testing / debugging).
+    You must call with confirm=True to avoid accidental use.
+    """
+    if not confirm:
+        raise RuntimeError("Refusing to clear registry without confirm=True.")
+    save_registry(_default_registry())
+
+def set_phase1_active_flags(active_ids: List[str]) -> None:
+    """
+    Update the `phase1_active` flag for all strategies
+    based on the list of active strategy IDs.
+    """
+    active_set = set(active_ids or [])
+
+    registry = load_registry()
+    strategies = registry.get("strategies", [])
+
     for s in strategies:
-        s["phase1_active"] = s.get("uid") in active_set
-    reg["strategies"] = strategies
-    save_registry(reg)
+        sid = s.get("id")
+        s["phase1_active"] = sid in active_set
 
-
-def get_phase1_active_uids() -> List[str]:
-    """
-    Return list of strategy UIDs currently flagged as active in Phase 1.
-    """
-    strategies = list_strategies()
-    return [s["uid"] for s in strategies if s.get("phase1_active")]
-
-
-# ---------------------------------------------------------------------------
-# Portfolio operations
-# ---------------------------------------------------------------------------
-
+    registry["strategies"] = strategies
+    save_registry(registry)
+    
 def list_portfolios() -> List[Dict[str, Any]]:
-    reg = get_registry()
-    return reg.get("portfolios", [])
+    """
+    Return the list of portfolios from the registry.
+    """
+    registry = load_registry()
+    portfolios = registry.get("portfolios", [])
+    if not isinstance(portfolios, list):
+        portfolios = []
+    return portfolios
 
 
-def _find_portfolio_index(portfolios: List[Dict[str, Any]], uid: str) -> int:
+def _find_portfolio_index(portfolios: List[Dict[str, Any]], portfolio_id: str) -> int:
+    """
+    Return index of the portfolio with the given id, or -1 if not found.
+    """
     for i, p in enumerate(portfolios):
-        if p.get("uid") == uid:
+        if p.get("id") == portfolio_id:
             return i
     return -1
 
 
-def get_portfolio(uid: str) -> Optional[Dict[str, Any]]:
+def get_portfolio(portfolio_id: str) -> Optional[Dict[str, Any]]:
     """
-    Get a single portfolio by UID. Returns None if not found.
+    Get a single portfolio by id. Returns None if not found.
     """
-    reg = get_registry()
-    portfolios = reg.get("portfolios", [])
-    idx = _find_portfolio_index(portfolios, uid)
+    portfolios = list_portfolios()
+    idx = _find_portfolio_index(portfolios, portfolio_id)
     if idx == -1:
         return None
     return portfolios[idx]
 
 
-def add_or_update_portfolio(portfolio: Dict[str, Any]) -> Dict[str, Any]:
+def add_or_update_portfolio(portfolio: Dict[str, Any]) -> None:
     """
-    Insert or update a portfolio in the registry.
+    Add a new portfolio or update an existing one.
 
-    Expected fields:
-        - uid (optional for new portfolios)
-        - name (string)
-        - strategy_uids (list of strategy UIDs)
-        - weights (dict uid -> float)
-        - size_factors (dict uid -> float)
-        - phase1_done (bool, optional)
-        - optimizer_settings (dict, optional)
+    Required fields:
+        - id: unique portfolio identifier (string)
+        - name: human-readable portfolio name
+        - strategy_ids: list of strategy ids (strings)
     """
-    reg = get_registry()
-    portfolios = reg.get("portfolios", [])
+    required = ["id", "name", "strategy_ids"]
+    missing = [k for k in required if k not in portfolio or not portfolio[k]]
+    if missing:
+        raise ValueError(f"Missing required fields in portfolio: {missing}")
 
-    uid = portfolio.get("uid")
-    now = _now_iso()
+    if not isinstance(portfolio["strategy_ids"], list):
+        raise ValueError("portfolio['strategy_ids'] must be a list of strategy ids")
 
-    if uid:
-        # Update existing if found
-        idx = _find_portfolio_index(portfolios, uid)
-        if idx != -1:
-            existing = portfolios[idx]
-            created = existing.get("created_at")
-            merged = dict(existing)
-            merged.update(portfolio)
-            merged["uid"] = uid
-            merged["id"] = uid  # keep legacy "id" field equal to uid
-            merged["updated_at"] = now
-            if created:
-                merged["created_at"] = created
-            portfolios[idx] = merged
-        else:
-            # uid provided but not found; treat as new
-            portfolio_uid = uid
-            portfolio["uid"] = portfolio_uid
-            portfolio["id"] = portfolio_uid
-            portfolio.setdefault("created_at", now)
-            portfolio["updated_at"] = now
-            portfolios.append(portfolio)
-    else:
-        # New portfolio, assign UID
-        portfolio_uid = _next_portfolio_uid(reg)
-        portfolio["uid"] = portfolio_uid
-        portfolio["id"] = portfolio_uid
-        portfolio.setdefault("created_at", now)
-        portfolio["updated_at"] = now
+    registry = load_registry()
+    portfolios = registry.get("portfolios", [])
+    if not isinstance(portfolios, list):
+        portfolios = []
+
+    now_iso = datetime.now().isoformat(timespec="seconds")
+    if "created_at" not in portfolio:
+        portfolio["created_at"] = now_iso
+    portfolio["updated_at"] = now_iso
+
+    idx = _find_portfolio_index(portfolios, portfolio["id"])
+
+    if idx == -1:
         portfolios.append(portfolio)
+    else:
+        existing = portfolios[idx]
+        if "created_at" in existing and "created_at" in portfolio:
+            portfolio["created_at"] = existing["created_at"]
+        portfolios[idx] = portfolio
 
-    reg["portfolios"] = portfolios
-    save_registry(reg)
-    return get_portfolio(portfolio.get("uid", portfolio_uid))
+    registry["portfolios"] = portfolios
+    save_registry(registry)
 
-
-# ---------------------------------------------------------------------------
-# Convenience helpers for UI
-# ---------------------------------------------------------------------------
-
-def list_portfolio_options() -> List[Dict[str, Any]]:
-    """
-    Helper to build dropdown options for portfolios.
-
-    Returns a list of {label, value} dicts suitable for a dcc.Dropdown.
-    """
-    portfolios = list_portfolios()
-    opts: List[Dict[str, Any]] = []
-    for p in portfolios:
-        label = p.get("name") or p.get("uid")
-        value = p.get("uid")
-        opts.append({"label": label, "value": value})
-    return opts

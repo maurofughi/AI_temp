@@ -10,10 +10,11 @@ Created on Sat Nov 29 06:27:27 2025
 import os
 import io
 import base64
+import uuid
 import pandas as pd
 from datetime import datetime
 import dash_bootstrap_components as dbc
-from dash import html, dcc, Input, Output, State, callback, ctx
+from dash import html, dcc, Input, Output, State, callback, ctx, ALL, no_update
 
 from core.registry import (
     load_registry,
@@ -23,11 +24,56 @@ from core.registry import (
     list_portfolios,
     get_portfolio,
     add_or_update_portfolio,
+    derive_uid_from_filepath,
+    uid_exists_in_registry,
+    validate_uid_uniqueness,
+    mark_strategies_as_saved,
+    get_strategy_by_uid,
+    get_internal_strategy_path,
+    get_portfolios_for_uid,
+    get_all_saved_uids,
+    INTERNAL_STRATEGY_DIR,
 )
 
 # In-memory store for strategies loaded in this session (shared across pages)
-# Key: strategy_id, Value: dict with metadata (id, name, file_path, cached df, etc.)
+# Key: strategy uid, Value: dict with metadata (uid, name, file_path, cached df, etc.)
 p1_strategy_store = {}
+
+
+def create_notification(level: str, text: str) -> dict:
+    """
+    Create a notification entry following the schema:
+    {
+      "id": "<uuid>",
+      "timestamp": "<ISO-8601 datetime>",
+      "level": "ERROR" | "SKIP",
+      "text": "<full original message>"
+    }
+    """
+    return {
+        "id": uuid.uuid4().hex,
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "level": level,
+        "text": text,
+    }
+
+
+def errors_to_notifications(errors: list) -> list:
+    """
+    Convert a list of error strings to notification entries.
+    Parses [ERROR] and [SKIP] prefixes to determine level.
+    """
+    notifications = []
+    for err in errors:
+        if err.startswith("[ERROR]"):
+            level = "ERROR"
+        elif err.startswith("[SKIP]"):
+            level = "SKIP"
+        else:
+            level = "SKIP"  # Default to SKIP for unknown prefixes
+        notifications.append(create_notification(level, err))
+    return notifications
+
 
 OO_REQUIRED_COLUMNS = [
     "Date Opened",
@@ -314,56 +360,174 @@ def build_data_input_section(folder_info, folder_checklist, portfolio_options):
 def build_strategy_sidebar():
     """
     Shared left-hand 'Strategy List' sidebar (Phase 1 / Phase 2 / etc).
+    
+    Now split into two panels:
+    - Active List (top): strategies currently in the working set (is_active=True)
+    - Universe List (bottom): all saved strategies (is_saved=True)
     """
     return dbc.Col(
-        dbc.Card(
-            [
-                dbc.CardHeader(
-                    "Strategy List (Portfolio: Unsaved Portfolio)",
-                    id="p1-strategy-list-header",
+        [
+            # Stores for strategy states
+            dcc.Store(id="p1-strategy-registry-sync"),
+            dcc.Store(id="p1-active-list-store", data=[]),
+            dcc.Store(id="p1-universe-list-store", data=[]),
+            
+            # Hidden checklist to maintain backward compatibility with existing callbacks
+            html.Div(
+                dcc.Checklist(
+                    id="p1-strategy-checklist",
+                    options=[],
+                    value=[],
                 ),
-                dbc.CardBody(
-                    [
-                        # Hidden store just to satisfy Dash output requirement when updating registry
-                        dcc.Store(id="p1-strategy-registry-sync"),
-                        dbc.Checkbox(
-                            id="p1-strategy-select-all",
-                            value=True,
-                            label="Select / deselect all",
-                            style={
-                                "fontSize": "0.8rem",
-                                "marginBottom": "0.4rem",
-                            },
-                        ),
-                        dcc.Checklist(
-                            id="p1-strategy-checklist",
-                            options=[],
-                            value=[],
-                            labelStyle={
-                                "display": "block",
-                                "marginBottom": "0.15rem",
-                            },
-                            style={
-                                "maxHeight": "400px",
-                                "overflowY": "auto",
-                                "fontSize": "0.85rem",
-                            },
-                        ),
-                        html.Div(
-                            id="p1-strategy-summary",
-                            children="No strategies loaded yet.",
-                            style={
-                                "fontSize": "0.8rem",
-                                "marginTop": "0.4rem",
-                                "color": "#AAAAAA",
-                            },
-                        ),
-                    ]
-                ),
-            ],
-            style={"position": "sticky", "top": "80px"},
-        ),
+                style={"display": "none"},
+            ),
+            
+            # ===== Active List (top block) =====
+            dbc.Card(
+                [
+                    dbc.CardHeader(
+                        [
+                            html.Span(
+                                "Active",
+                                style={"fontWeight": "bold"},
+                            ),
+                            html.Span(
+                                id="p1-active-count-badge",
+                                children=" (0)",
+                                style={"fontSize": "0.85rem", "color": "#AAAAAA"},
+                            ),
+                        ],
+                        id="p1-strategy-list-header",
+                        style={"display": "flex", "alignItems": "center", "justifyContent": "space-between"},
+                    ),
+                    dbc.CardBody(
+                        [
+                            # Select/Deselect all for Active list
+                            dbc.Checkbox(
+                                id="p1-strategy-select-all",
+                                value=False,
+                                label="Select / deselect all",
+                                style={
+                                    "fontSize": "0.8rem",
+                                    "marginBottom": "0.4rem",
+                                },
+                            ),
+                            # Active list container - rendered dynamically
+                            html.Div(
+                                id="p1-active-list-container",
+                                children=[
+                                    html.Div(
+                                        "No active strategies.",
+                                        style={"fontSize": "0.8rem", "color": "#888888"},
+                                    )
+                                ],
+                                style={
+                                    "maxHeight": "200px",
+                                    "overflowY": "auto",
+                                    "fontSize": "0.85rem",
+                                },
+                            ),
+                        ],
+                        style={"paddingTop": "0.5rem", "paddingBottom": "0.5rem"},
+                    ),
+                ],
+                style={"marginBottom": "0.5rem"},
+            ),
+            
+            # ===== Universe List (bottom block) =====
+            dbc.Card(
+                [
+                    dbc.CardHeader(
+                        [
+                            html.Span(
+                                "Universe",
+                                style={"fontWeight": "bold"},
+                            ),
+                            html.Span(
+                                id="p1-universe-count-badge",
+                                children=" (0)",
+                                style={"fontSize": "0.85rem", "color": "#AAAAAA"},
+                            ),
+                        ],
+                        style={"display": "flex", "alignItems": "center", "justifyContent": "space-between"},
+                    ),
+                    dbc.CardBody(
+                        [
+                            # Search box
+                            dcc.Input(
+                                id="p1-universe-search",
+                                type="text",
+                                placeholder="Search strategies...",
+                                style={
+                                    "width": "100%",
+                                    "fontSize": "0.8rem",
+                                    "marginBottom": "0.4rem",
+                                    "padding": "0.25rem 0.5rem",
+                                    "borderRadius": "4px",
+                                    "border": "1px solid #444444",
+                                    "backgroundColor": "#2a2a2a",
+                                    "color": "#EEEEEE",
+                                },
+                            ),
+                            # Header controls
+                            html.Div(
+                                [
+                                    dbc.Checkbox(
+                                        id="p1-universe-select-all",
+                                        value=False,
+                                        label="Select all (filtered)",
+                                        style={"fontSize": "0.75rem"},
+                                    ),
+                                    dbc.Button(
+                                        "Move → Active",
+                                        id="p1-universe-move-to-active-btn",
+                                        color="primary",
+                                        size="sm",
+                                        outline=True,
+                                        style={"fontSize": "0.7rem", "padding": "0.15rem 0.4rem"},
+                                    ),
+                                ],
+                                style={
+                                    "display": "flex",
+                                    "justifyContent": "space-between",
+                                    "alignItems": "center",
+                                    "marginBottom": "0.4rem",
+                                },
+                            ),
+                            # Universe list container - rendered dynamically
+                            html.Div(
+                                id="p1-universe-list-container",
+                                children=[
+                                    html.Div(
+                                        "No strategies in universe.",
+                                        style={"fontSize": "0.8rem", "color": "#888888"},
+                                    )
+                                ],
+                                style={
+                                    "maxHeight": "250px",
+                                    "overflowY": "auto",
+                                    "fontSize": "0.85rem",
+                                },
+                            ),
+                        ],
+                        style={"paddingTop": "0.5rem", "paddingBottom": "0.5rem"},
+                    ),
+                ],
+            ),
+            
+            # Summary message under both lists
+            html.Div(
+                id="p1-strategy-summary",
+                children="",
+                style={
+                    "fontSize": "0.8rem",
+                    "marginTop": "0.4rem",
+                    "color": "#AAAAAA",
+                },
+            ),
+        ],
         width=3,
+        style={"position": "sticky", "top": "80px"},
     )
 
 @callback(
@@ -644,21 +808,29 @@ def save_or_saveas_portfolio(
         portfolio_id = f"ph1::{portfolio_name_final}::{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
     # ---------- Ensure all selected strategies exist/updated in registry ----------
-    existing_strats = list_strategies()
-    strat_map = {s.get("id"): s for s in existing_strats if "id" in s}
-
-
-        # ---------- Ensure each selected strategy is present in registry ----------
+    # Collect UIDs for the portfolio and source paths for copying
+    selected_uids = []
+    source_paths = {}
+    
     for sid in selected_strategy_ids:
         # Start from whatever we have in the in-memory store
         meta = (p1_strategy_store.get(sid) or {}).copy()
 
-        # Always enforce the id
+        # Always enforce the id (legacy compatibility)
         meta["id"] = sid
 
         # file_path: if missing, default to the id (for folder-based strategies)
         if not meta.get("file_path"):
             meta["file_path"] = sid
+
+        # Derive uid from file_path
+        uid = derive_uid_from_filepath(meta["file_path"])
+        meta["uid"] = uid
+        meta["file_name"] = f"{uid}.csv"
+        selected_uids.append(uid)
+        
+        # Track source path for copying
+        source_paths[uid] = meta["file_path"]
 
         # name: if missing, derive from the filename (without .csv)
         if not meta.get("name"):
@@ -697,16 +869,25 @@ def save_or_saveas_portfolio(
                     n_rows = 0
             meta["n_rows"] = n_rows
 
-        # Keep store and registry in sync
+        # Keep store and registry in sync (use uid as key now)
         p1_strategy_store[sid] = meta
+        p1_strategy_store[uid] = meta  # Also store by uid
         add_or_update_strategy(meta)
 
+    # ---------- Copy strategies to internal storage if not already saved ----------
+    success_uids, failed_uids = mark_strategies_as_saved(selected_uids, source_paths)
+    
+    # Build warning message for failed copies
+    copy_warning = ""
+    if failed_uids:
+        copy_warning = f" Warning: {len(failed_uids)} strategy(s) could not be saved internally."
 
     # ---------- Add or update portfolio in registry ----------
     portfolio_obj = {
         "id": portfolio_id,
         "name": portfolio_name_final,
-        "strategy_ids": selected_strategy_ids,
+        "strategy_uids": selected_uids,
+        "strategy_ids": selected_strategy_ids,  # Keep for backward compatibility
         "phase1_done": True,
     }
     add_or_update_portfolio(portfolio_obj)
@@ -721,7 +902,7 @@ def save_or_saveas_portfolio(
 
     status = (
         f"Portfolio '{portfolio_name_final}' {action_label} with "
-        f"{len(selected_strategy_ids)} strategies."
+        f"{len(selected_strategy_ids)} strategies.{copy_warning}"
     )
 
     # current_portfolio_id becomes portfolio_id after any successful save
@@ -753,6 +934,7 @@ def update_strategy_list_header(current_portfolio_id):
     Output("p1-strategy-select-all", "value"),
     Output("p1-strategy-summary", "children"),
     Output("p1-current-portfolio-id", "data"),
+    Output("app-notifications", "data"),
     Input("p1-load-strategies-btn", "n_clicks"),
     Input("p1-load-portfolio-btn", "n_clicks"),
     Input("p1-strategy-select-all", "value"),
@@ -763,6 +945,7 @@ def update_strategy_list_header(current_portfolio_id):
     State("p1-strategy-checklist", "value"),
     State("p1-portfolio-dropdown", "value"),
     State("p1-current-portfolio-id", "data"),
+    State("app-notifications", "data"),
 )
 def load_or_toggle_strategies(
     n_clicks_load,
@@ -775,6 +958,7 @@ def load_or_toggle_strategies(
     existing_values,
     selected_portfolio_id,
     current_portfolio_id,
+    existing_notifications,
 ):
     """
     Dispatcher for:
@@ -785,12 +969,16 @@ def load_or_toggle_strategies(
     IMPORTANT:
     - This callback never clears the registry.
     - CSV loads merge into the current list; they do not replace it.
+    - Errors are routed to the app-notifications store instead of inline display.
     """
     triggered_id = ctx.triggered_id
+    
+    # Initialize existing notifications if None
+    existing_notifications = existing_notifications or []
 
     # Initial state: nothing has happened yet
     if triggered_id is None:
-        return [], [], False, "No strategies loaded yet.", current_portfolio_id
+        return [], [], False, "No strategies loaded yet.", current_portfolio_id, existing_notifications
 
 
     existing_options = existing_options or []
@@ -816,6 +1004,9 @@ def load_or_toggle_strategies(
 
         # ---------- FROM FOLDERS ----------
         if selected_folders:
+            # First, collect all candidate UIDs to validate uniqueness
+            registry = load_registry()
+            
             for folder in selected_folders:
                 if not os.path.isdir(folder):
                     errors.append(f"[ERROR] Folder does not exist: {folder}")
@@ -832,6 +1023,20 @@ def load_or_toggle_strategies(
                         continue
 
                     full_path = os.path.join(folder, f)
+                    
+                    # Derive UID and check for uniqueness
+                    uid = derive_uid_from_filepath(full_path)
+                    
+                    # Check if UID already exists in registry or in current batch
+                    if uid_exists_in_registry(uid, registry) or uid in [
+                        derive_uid_from_filepath(opt["value"]) 
+                        for opt in existing_options
+                    ]:
+                        errors.append(
+                            f"[SKIP] Strategy '{uid}' already exists in registry. "
+                            f"Skipping duplicate from {full_path}."
+                        )
+                        continue
 
                     try:
                         df = pd.read_csv(full_path)
@@ -867,6 +1072,9 @@ def load_or_toggle_strategies(
                     
                     strategy_meta = {
                         "id": strategy_id,
+                        "uid": uid,
+                        "file_name": f"{uid}.csv",
+                        "is_saved": False,
                         "name": f"FOLD. {os.path.splitext(f)[0]}",
                         "file_path": full_path,
                         "folder": os.path.basename(folder),
@@ -878,6 +1086,7 @@ def load_or_toggle_strategies(
                     }
 
                     p1_strategy_store[strategy_id] = strategy_meta
+                    p1_strategy_store[uid] = strategy_meta  # Also store by uid
 
                     if strategy_id not in option_map:
                         option_map[strategy_id] = (
@@ -892,6 +1101,10 @@ def load_or_toggle_strategies(
                 upload_contents = [upload_contents]
             if isinstance(upload_filenames, str):
                 upload_filenames = [upload_filenames]
+            
+            # Load registry once for UID checks if not loaded during folder processing
+            if 'registry' not in locals():
+                registry = load_registry()
         
             for content, fname in zip(upload_contents, upload_filenames):
                 try:
@@ -940,6 +1153,25 @@ def load_or_toggle_strategies(
                         f"[ERROR] Failed to save uploaded file {fname} to data folder: {e}"
                     )
                     continue
+                
+                # Derive UID from stored path and check for uniqueness
+                uid = derive_uid_from_filepath(stored_path)
+                
+                # Check if UID already exists in registry or in current batch
+                if uid_exists_in_registry(uid, registry) or uid in [
+                    derive_uid_from_filepath(opt["value"]) 
+                    for opt in existing_options
+                ]:
+                    errors.append(
+                        f"[SKIP] Strategy '{uid}' already exists in registry. "
+                        f"Skipping duplicate upload {fname}."
+                    )
+                    # Remove the stored file since we're skipping this upload
+                    try:
+                        os.remove(stored_path)
+                    except Exception:
+                        pass
+                    continue
         
                 # Use the stored path as the strategy id (same convention as folder-based)
                 strategy_id = stored_path
@@ -950,6 +1182,9 @@ def load_or_toggle_strategies(
                 
                 strategy_meta = {
                     "id": strategy_id,
+                    "uid": uid,
+                    "file_name": f"{uid}.csv",
+                    "is_saved": False,
                     "name": f"SINGLE. {os.path.splitext(fname)[0]}",
                     "file_path": stored_path,
                     "folder": "dataupl",
@@ -961,6 +1196,7 @@ def load_or_toggle_strategies(
 
         
                 p1_strategy_store[strategy_id] = strategy_meta
+                p1_strategy_store[uid] = strategy_meta  # Also store by uid
         
                 if strategy_id not in option_map:
                     option_map[strategy_id] = (
@@ -973,9 +1209,10 @@ def load_or_toggle_strategies(
         # If we still have nothing, report and keep context
         if not option_map:
             summary = "No strategies loaded (no valid CSVs found)."
-            if errors:
-                summary += " " + " ".join(errors)
-            return [], [], False, summary, current_portfolio_id
+            # Route errors to notifications instead of inline display
+            new_notifications = errors_to_notifications(errors) if errors else []
+            updated_notifications = existing_notifications + new_notifications
+            return [], [], False, summary, current_portfolio_id, updated_notifications
 
         # Build options sorted by label
         id_label_pairs = list(option_map.values())
@@ -992,22 +1229,46 @@ def load_or_toggle_strategies(
 
         select_all_flag = len(selected_values) == len(options)
 
+        # if new_ids:
+        #     base_summary = (
+        #         f"Added {len(new_ids)} new strategies from folders/uploads. "
+        #         f"{len(selected_values)} of {len(options)} strategies selected for Phase 1."
+        #     )
+        # else:
+        #     base_summary = (
+        #         f"No new strategies added. "
+        #         f"{len(selected_values)} of {len(options)} strategies selected for Phase 1."
+        #     )
+        
         if new_ids:
             base_summary = (
-                f"Added {len(new_ids)} new strategies from folders/uploads. "
+                f"[INFO] Added {len(new_ids)} new strategies from folders/uploads. "
                 f"{len(selected_values)} of {len(options)} strategies selected for Phase 1."
             )
         else:
             base_summary = (
-                f"No new strategies added. "
+                f"[INFO] No new strategies added. "
                 f"{len(selected_values)} of {len(options)} strategies selected for Phase 1."
             )
+        
+        # Push this into the same pipeline that already creates notifications
+        errors.append(base_summary)
 
-        if errors:
-            base_summary += " " + " ".join(errors)
+
+        # Route errors to notifications instead of inline display
+        new_notifications = errors_to_notifications(errors) if errors else []
+        updated_notifications = existing_notifications + new_notifications
+        
+        # Add count of issues to summary if there were errors (but don't show the full text)
+        # if errors:
+        #     base_summary += f" ({len(errors)} issue(s) - see notifications.)"
+            
+        # We no longer display any status text under the Strategy List;
+        # all feedback goes through the notification panel.
+        status_message = ""
 
         # IMPORTANT: keep current_portfolio_id unchanged
-        return options, selected_values, select_all_flag, base_summary, current_portfolio_id
+        return options, selected_values, select_all_flag, status_message, current_portfolio_id, updated_notifications
 
     # ----------------------------------------------------------
     # CASE 2: Load existing portfolio (from registry)
@@ -1018,13 +1279,13 @@ def load_or_toggle_strategies(
         if not selected_portfolio_id:
             summary = "No portfolio selected."
             current_values = []
-            return options, current_values, False, summary, None
+            return options, current_values, False, summary, None, existing_notifications
 
         portfolio = get_portfolio(selected_portfolio_id)
         if not portfolio:
             summary = f"Portfolio '{selected_portfolio_id}' not found in registry."
             current_values = []
-            return options, current_values, False, summary, None
+            return options, current_values, False, summary, None, existing_notifications
 
         # All strategies currently known in the registry
         all_strats = list_strategies()
@@ -1033,38 +1294,84 @@ def load_or_toggle_strategies(
                 "Registry has no strategies. "
                 "Save at least one portfolio before using this feature."
             )
-            return [], [], False, summary, selected_portfolio_id
+            return [], [], False, summary, selected_portfolio_id, existing_notifications
 
-        portfolio_ids = set(portfolio.get("strategy_ids", []))
+        # Get portfolio strategy UIDs (prefer strategy_uids, fallback to strategy_ids)
+        portfolio_uids = set(portfolio.get("strategy_uids", portfolio.get("strategy_ids", [])))
 
         # Build checklist options from all strategies in registry
+        # Use strategy id as value for backward compatibility with existing callbacks
         options = [
             {
-                "label": s.get("name", s.get("id", "UNKNOWN")),
+                "label": s.get("name", s.get("uid", s.get("id", "UNKNOWN"))),
                 "value": s["id"],
             }
             for s in sorted(
-                all_strats, key=lambda s: s.get("name", s.get("id", ""))
+                all_strats, key=lambda s: s.get("name", s.get("uid", s.get("id", "")))
             )
         ]
 
-        selected_values = [
-            s["id"] for s in all_strats if s["id"] in portfolio_ids
-        ]
-
-        n_missing = len(portfolio_ids) - len(selected_values)
+        # Load strategies from internal storage and populate in-memory store
+        selected_values = []
+        n_missing = 0
+        
+        for s in all_strats:
+            uid = s.get("uid")
+            sid = s.get("id")
+            
+            # Check if this strategy is in the portfolio (by uid or id for backward compat)
+            if uid in portfolio_uids or sid in portfolio_uids:
+                selected_values.append(sid)
+                
+                # Load strategy data from internal storage if is_saved=True
+                if s.get("is_saved", False):
+                    internal_path = get_internal_strategy_path(uid)
+                    if internal_path.exists():
+                        try:
+                            df = pd.read_csv(internal_path)
+                            # Cache required columns
+                            cache_cols = ["Date Closed", "P/L"]
+                            for extra_col in ["Margin Req.", "Date Opened", "Time Opened", 
+                                            "Premium", "Gap", "Movement"]:
+                                if extra_col in df.columns:
+                                    cache_cols.append(extra_col)
+                            
+                            strategy_meta = dict(s)
+                            strategy_meta["df"] = df[cache_cols].copy()
+                            strategy_meta["file_path"] = str(internal_path)
+                            
+                            # Store in memory by both id and uid
+                            p1_strategy_store[sid] = strategy_meta
+                            if uid:
+                                p1_strategy_store[uid] = strategy_meta
+                        except (FileNotFoundError, PermissionError, pd.errors.EmptyDataError):
+                            # Strategy file missing or inaccessible - continue with registry data
+                            pass
+                        except Exception:
+                            # Unexpected error loading strategy - continue with registry data
+                            pass
+        
+        # Count missing strategies
+        n_found = len(selected_values)
+        n_expected = len(portfolio_uids)
+        n_missing = n_expected - n_found
+        
+        # Get universe count (all saved strategies)
+        all_saved_uids = get_all_saved_uids(registry)
+        n_universe = len(all_saved_uids)
 
         select_all_flag = len(selected_values) == len(options)
 
+        # Summary message format: "Loaded portfolio 'X' – Y active out of Z in universe."
         summary = (
             f"Loaded portfolio '{portfolio.get('name', selected_portfolio_id)}' – "
-            f"{len(selected_values)} strategies selected."
+            f"{len(selected_values)} active out of {n_universe} in universe."
         )
         if n_missing > 0:
-            summary += f" ({n_missing} strategy id(s) in portfolio not found in registry.)"
+            summary += f" ({n_missing} uid(s) not found.)"
 
         # Portfolio context is set to the loaded portfolio id
-        return options, selected_values, select_all_flag, summary, selected_portfolio_id
+        return options, selected_values, select_all_flag, summary, selected_portfolio_id, existing_notifications
 
     # ----------------------------------------------------------
     # CASE 3: Select-all checkbox toggled
@@ -1072,18 +1379,680 @@ def load_or_toggle_strategies(
     if triggered_id == "p1-strategy-select-all":
         options = existing_options or []
         if not options:
-            return [], [], False, "No strategies loaded yet.", current_portfolio_id
+            return [], [], False, "", current_portfolio_id, existing_notifications
 
         if select_all_value:
             values = [opt["value"] for opt in options]
         else:
             values = []
 
-        summary = f"{len(values)} of {len(options)} strategies selected for Phase 1."
-        return options, values, select_all_value, summary, current_portfolio_id
+        # Summary shows selected count
+        summary = f"Selected {len(values)} of {len(options)} active strategies."
+        return options, values, select_all_value, summary, current_portfolio_id, existing_notifications
 
     # Fallback (shouldn't hit here)
     options = existing_options or []
     if not options:
-        return [], [], False, "No strategies loaded yet.", current_portfolio_id
-    return options, [], False, "No strategies loaded yet.", current_portfolio_id
+        return [], [], False, "", current_portfolio_id, existing_notifications
+    return options, [], False, "", current_portfolio_id, existing_notifications
+
+
+# ===========================================================================
+# Active / Universe Lists – New Callbacks
+# ===========================================================================
+
+def get_portfolio_badge_color(count: int) -> str:
+    """
+    Return badge color based on portfolio membership count.
+    Grey for 0, Blue→Green→Yellow→Red gradient for 1, 2, 3-4, 5, 6+
+    """
+    if count == 0:
+        return "#666666"
+    elif count == 1:
+        return "#1f77b4"  # Blue
+    elif count == 2:
+        return "#2ca02c"  # Green
+    elif count <= 4:
+        return "#ffbb00"  # Yellow
+    elif count == 5:
+        return "#ff7f0e"  # Orange
+    else:
+        return "#d62728"  # Red
+
+
+def _build_active_row(uid: str, name: str, is_selected: bool, is_saved: bool, portfolio_count: int = 0):
+    """
+    Build a single row for the Active List with:
+    - Checkbox for is_selected
+    - Strategy name
+    - Remove (×) icon
+    - Saved shading background
+    - Optional portfolio badge
+    """
+    row_style = {
+        "display": "flex",
+        "alignItems": "center",
+        "padding": "0.25rem 0.5rem",
+        "marginBottom": "0.15rem",
+        "borderRadius": "4px",
+    }
+    
+    # Add tinted background for saved strategies
+    if is_saved:
+        row_style["backgroundColor"] = "rgba(31, 119, 180, 0.15)"  # subtle blue tint
+    
+    return html.Div(
+        [
+            # Checkbox for is_selected
+            dbc.Checkbox(
+                id={"type": "active-row-checkbox", "uid": uid},
+                value=is_selected,
+                style={"marginRight": "0.5rem"},
+            ),
+            # Strategy name
+            html.Span(
+                name,
+                style={
+                    "flex": "1",
+                    "fontSize": "0.8rem",
+                    "overflow": "hidden",
+                    "textOverflow": "ellipsis",
+                    "whiteSpace": "nowrap",
+                },
+                title=name,
+            ),
+            # Portfolio badge (optional)
+            html.Span(
+                str(portfolio_count) if portfolio_count > 0 else "",
+                style={
+                    "fontSize": "0.65rem",
+                    "padding": "0.1rem 0.3rem",
+                    "borderRadius": "8px",
+                    "backgroundColor": get_portfolio_badge_color(portfolio_count),
+                    "color": "white",
+                    "marginRight": "0.3rem",
+                    "display": "inline-block" if is_saved and portfolio_count > 0 else "none",
+                },
+                title=f"In {portfolio_count} portfolio(s)" if is_saved else "",
+            ),
+            # Remove button
+            html.Button(
+                "×",
+                id={"type": "active-row-remove", "uid": uid},
+                style={
+                    "border": "none",
+                    "background": "none",
+                    "color": "#ff6666",
+                    "cursor": "pointer",
+                    "fontSize": "1rem",
+                    "padding": "0 0.25rem",
+                    "lineHeight": "1",
+                },
+                title="Remove from Active",
+            ),
+        ],
+        style=row_style,
+    )
+
+
+def _build_universe_row(uid: str, name: str, is_multi_selected: bool, is_active: bool, 
+                        portfolio_count: int = 0, portfolio_names: list = None):
+    """
+    Build a single row for the Universe List with:
+    - Checkbox for multi-select
+    - Strategy name
+    - Quick-add icon
+    - Portfolio badge with hover tooltip
+    """
+    portfolio_names = portfolio_names or []
+    tooltip_text = ", ".join(portfolio_names) if portfolio_names else "Not in any portfolio"
+    
+    row_style = {
+        "display": "flex",
+        "alignItems": "center",
+        "padding": "0.25rem 0.5rem",
+        "marginBottom": "0.15rem",
+        "borderRadius": "4px",
+    }
+    
+    # Dim the row if already active
+    if is_active:
+        row_style["opacity"] = "0.5"
+    
+    return html.Div(
+        [
+            # Checkbox for multi-select
+            dbc.Checkbox(
+                id={"type": "universe-row-checkbox", "uid": uid},
+                value=is_multi_selected,
+                style={"marginRight": "0.5rem"},
+                disabled=is_active,  # Disable if already active
+            ),
+            # Strategy name
+            html.Span(
+                name,
+                style={
+                    "flex": "1",
+                    "fontSize": "0.8rem",
+                    "overflow": "hidden",
+                    "textOverflow": "ellipsis",
+                    "whiteSpace": "nowrap",
+                },
+                title=name,
+            ),
+            # Portfolio badge
+            html.Span(
+                str(portfolio_count),
+                style={
+                    "fontSize": "0.65rem",
+                    "padding": "0.1rem 0.3rem",
+                    "borderRadius": "8px",
+                    "backgroundColor": get_portfolio_badge_color(portfolio_count),
+                    "color": "white" if portfolio_count > 0 else "#AAAAAA",
+                    "marginRight": "0.3rem",
+                },
+                title=tooltip_text,
+            ),
+            # Quick-add button
+            html.Button(
+                "+",
+                id={"type": "universe-row-quickadd", "uid": uid},
+                style={
+                    "border": "none",
+                    "background": "none",
+                    "color": "#66ff66" if not is_active else "#666666",
+                    "cursor": "pointer" if not is_active else "not-allowed",
+                    "fontSize": "1rem",
+                    "padding": "0 0.25rem",
+                    "lineHeight": "1",
+                },
+                title="Add to Active" if not is_active else "Already in Active",
+                disabled=is_active,
+            ),
+        ],
+        style=row_style,
+    )
+
+
+@callback(
+    Output("p1-active-list-container", "children"),
+    Output("p1-active-count-badge", "children"),
+    Output("p1-active-list-store", "data"),
+    Input("p1-strategy-checklist", "options"),
+    Input("p1-strategy-checklist", "value"),
+    Input({"type": "active-row-checkbox", "uid": ALL}, "value"),
+    Input({"type": "active-row-remove", "uid": ALL}, "n_clicks"),
+    State("p1-active-list-store", "data"),
+)
+def update_active_list_display(
+    checklist_options,
+    checklist_values,
+    checkbox_values,
+    remove_clicks,
+    active_store,
+):
+    """
+    Render the Active List based on current strategy state.
+    
+    Active List shows strategies with is_active=True.
+    - Checkbox toggles is_selected.
+    - Remove button sets is_active=False.
+    """
+    triggered_id = ctx.triggered_id
+    
+    # Initialize active_store if needed
+    if active_store is None:
+        active_store = []
+    
+    # Get all options and values
+    checklist_options = checklist_options or []
+    checklist_values = checklist_values or []
+    
+    # Build active strategies from checklist options
+    # Each option in p1-strategy-checklist represents a strategy in the active list
+    active_strategies = []
+    registry = load_registry()
+    
+    for opt in checklist_options:
+        sid = opt.get("value")
+        label = opt.get("label", "")
+        
+        # Determine if it's selected
+        is_selected = sid in checklist_values
+        
+        # Get strategy info from store or registry
+        meta = p1_strategy_store.get(sid, {})
+        uid = meta.get("uid") or derive_uid_from_filepath(sid)
+        name = meta.get("name") or label or uid
+        is_saved = meta.get("is_saved", False)
+        
+        # Get portfolio count for saved strategies
+        portfolio_count = 0
+        if is_saved:
+            portfolios = get_portfolios_for_uid(uid, registry)
+            portfolio_count = len(portfolios)
+        
+        active_strategies.append({
+            "uid": uid,
+            "sid": sid,
+            "name": name,
+            "is_selected": is_selected,
+            "is_saved": is_saved,
+            "portfolio_count": portfolio_count,
+        })
+    
+    # Build rows
+    if not active_strategies:
+        container_children = [
+            html.Div(
+                "No active strategies.",
+                style={"fontSize": "0.8rem", "color": "#888888"},
+            )
+        ]
+    else:
+        container_children = [
+            _build_active_row(
+                uid=s["uid"],
+                name=s["name"],
+                is_selected=s["is_selected"],
+                is_saved=s["is_saved"],
+                portfolio_count=s["portfolio_count"],
+            )
+            for s in active_strategies
+        ]
+    
+    count_badge = f" ({len(active_strategies)})"
+    
+    return container_children, count_badge, active_strategies
+
+
+@callback(
+    Output("p1-universe-list-container", "children"),
+    Output("p1-universe-count-badge", "children"),
+    Output("p1-universe-list-store", "data"),
+    Input("p1-strategy-checklist", "options"),
+    Input("p1-universe-search", "value"),
+    Input({"type": "universe-row-checkbox", "uid": ALL}, "value"),
+    State("p1-universe-list-store", "data"),
+)
+def update_universe_list_display(
+    checklist_options,
+    search_value,
+    checkbox_values,
+    universe_store,
+):
+    """
+    Render the Universe List based on saved strategies in registry.
+    
+    Universe List shows all strategies with is_saved=True.
+    Provides live search filtering.
+    """
+    # Initialize
+    universe_store = universe_store or []
+    search_value = (search_value or "").lower().strip()
+    checklist_options = checklist_options or []
+    
+    # Get active UIDs from checklist (those are the active strategies)
+    active_uids = set()
+    for opt in checklist_options:
+        sid = opt.get("value")
+        meta = p1_strategy_store.get(sid, {})
+        uid = meta.get("uid") or derive_uid_from_filepath(sid)
+        active_uids.add(uid)
+    
+    # Get all saved strategies from registry
+    registry = load_registry()
+    all_strategies = registry.get("strategies", [])
+    
+    universe_strategies = []
+    for s in all_strategies:
+        if not s.get("is_saved", False):
+            continue
+        
+        uid = s.get("uid")
+        if not uid:
+            continue
+        
+        name = s.get("name", uid)
+        
+        # Apply search filter
+        if search_value and search_value not in name.lower():
+            continue
+        
+        # Check if active
+        is_active = uid in active_uids
+        
+        # Get portfolio info
+        portfolios = get_portfolios_for_uid(uid, registry)
+        portfolio_count = len(portfolios)
+        portfolio_names = [p.get("name", p.get("id", "")) for p in portfolios]
+        
+        # Check multi-select state from store
+        is_multi_selected = False
+        for item in universe_store:
+            if item.get("uid") == uid:
+                is_multi_selected = item.get("is_multi_selected", False)
+                break
+        
+        universe_strategies.append({
+            "uid": uid,
+            "name": name,
+            "is_active": is_active,
+            "is_multi_selected": is_multi_selected,
+            "portfolio_count": portfolio_count,
+            "portfolio_names": portfolio_names,
+        })
+    
+    # Sort by name
+    universe_strategies.sort(key=lambda x: x["name"].lower())
+    
+    # Build rows
+    if not universe_strategies:
+        if search_value:
+            container_children = [
+                html.Div(
+                    f"No strategies matching '{search_value}'.",
+                    style={"fontSize": "0.8rem", "color": "#888888"},
+                )
+            ]
+        else:
+            container_children = [
+                html.Div(
+                    "No strategies in universe.",
+                    style={"fontSize": "0.8rem", "color": "#888888"},
+                )
+            ]
+    else:
+        container_children = [
+            _build_universe_row(
+                uid=s["uid"],
+                name=s["name"],
+                is_multi_selected=s["is_multi_selected"],
+                is_active=s["is_active"],
+                portfolio_count=s["portfolio_count"],
+                portfolio_names=s["portfolio_names"],
+            )
+            for s in universe_strategies
+        ]
+    
+    count_badge = f" ({len(universe_strategies)})"
+    
+    return container_children, count_badge, universe_strategies
+
+
+@callback(
+    Output("p1-universe-select-all", "value"),
+    Input("p1-universe-select-all", "value"),
+    State("p1-universe-list-store", "data"),
+    prevent_initial_call=True,
+)
+def toggle_universe_select_all(select_all_value, universe_store):
+    """
+    Handle Select/Deselect All toggle for Universe list.
+    This updates the is_multi_selected state for all visible (filtered) strategies.
+    """
+    # The actual selection update happens through the checkbox values
+    # This callback just maintains the checkbox state
+    return select_all_value
+
+
+@callback(
+    Output("p1-strategy-checklist", "options", allow_duplicate=True),
+    Output("p1-strategy-checklist", "value", allow_duplicate=True),
+    Output("app-notifications", "data", allow_duplicate=True),
+    Input("p1-universe-move-to-active-btn", "n_clicks"),
+    Input({"type": "universe-row-quickadd", "uid": ALL}, "n_clicks"),
+    State("p1-universe-list-store", "data"),
+    State("p1-strategy-checklist", "options"),
+    State("p1-strategy-checklist", "value"),
+    State("app-notifications", "data"),
+    prevent_initial_call=True,
+)
+def move_to_active_from_universe(
+    move_btn_clicks,
+    quickadd_clicks,
+    universe_store,
+    existing_options,
+    existing_values,
+    existing_notifications,
+):
+    """
+    Move strategies from Universe to Active list.
+    
+    - Bulk move: Move all selected (is_multi_selected) strategies.
+    - Quick-add: Move a single strategy via the + button.
+    
+    Sets is_active=True, is_selected=False for moved strategies.
+    """
+    triggered_id = ctx.triggered_id
+    
+    existing_options = existing_options or []
+    existing_values = existing_values or []
+    existing_notifications = existing_notifications or []
+    universe_store = universe_store or []
+    
+    # Get currently active UIDs
+    active_uids = set()
+    for opt in existing_options:
+        sid = opt.get("value")
+        meta = p1_strategy_store.get(sid, {})
+        uid = meta.get("uid") or derive_uid_from_filepath(sid)
+        active_uids.add(uid)
+    
+    uids_to_add = []
+    skip_notifications = []
+    
+    if triggered_id == "p1-universe-move-to-active-btn":
+        # Bulk move selected strategies
+        for item in universe_store:
+            if item.get("is_multi_selected") and not item.get("is_active"):
+                uids_to_add.append(item.get("uid"))
+            elif item.get("is_multi_selected") and item.get("is_active"):
+                skip_notifications.append(
+                    create_notification("SKIP", f"[SKIP] '{item.get('name', item.get('uid'))}' already active.")
+                )
+    
+    elif isinstance(triggered_id, dict) and triggered_id.get("type") == "universe-row-quickadd":
+        # Quick-add single strategy
+        uid = triggered_id.get("uid")
+        if uid and uid not in active_uids:
+            uids_to_add.append(uid)
+        elif uid:
+            skip_notifications.append(
+                create_notification("SKIP", f"[SKIP] Strategy already active.")
+            )
+    
+    if not uids_to_add:
+        updated_notifications = existing_notifications + skip_notifications
+        return no_update, no_update, updated_notifications
+    
+    # Add strategies to the checklist (making them active)
+    registry = load_registry()
+    new_options = list(existing_options)
+    option_values = {opt["value"] for opt in new_options}
+    
+    for uid in uids_to_add:
+        # Get strategy info from registry
+        strategy = get_strategy_by_uid(uid, registry)
+        if not strategy:
+            continue
+        
+        # Use internal path as the id for consistency
+        internal_path = str(get_internal_strategy_path(uid))
+        
+        if internal_path in option_values:
+            continue  # Already in options
+        
+        name = strategy.get("name", uid)
+        
+        # Load strategy data into memory store
+        try:
+            df = pd.read_csv(internal_path)
+            cache_cols = ["Date Closed", "P/L"]
+            for extra_col in ["Margin Req.", "Date Opened", "Time Opened", "Premium", "Gap", "Movement"]:
+                if extra_col in df.columns:
+                    cache_cols.append(extra_col)
+            
+            strategy_meta = dict(strategy)
+            strategy_meta["df"] = df[cache_cols].copy()
+            strategy_meta["file_path"] = internal_path
+            strategy_meta["is_active"] = True
+            strategy_meta["is_selected"] = False
+            
+            p1_strategy_store[internal_path] = strategy_meta
+            p1_strategy_store[uid] = strategy_meta
+        except (FileNotFoundError, PermissionError, pd.errors.EmptyDataError, pd.errors.ParserError):
+            # Skip if file doesn't exist, is inaccessible, or can't be parsed
+            continue
+        
+        new_options.append({"label": name, "value": internal_path})
+    
+    # Values remain unchanged (new strategies are added with is_selected=False)
+    updated_notifications = existing_notifications + skip_notifications
+    
+    return new_options, existing_values, updated_notifications
+
+
+@callback(
+    Output("p1-strategy-checklist", "options", allow_duplicate=True),
+    Output("p1-strategy-checklist", "value", allow_duplicate=True),
+    Input({"type": "active-row-remove", "uid": ALL}, "n_clicks"),
+    State("p1-strategy-checklist", "options"),
+    State("p1-strategy-checklist", "value"),
+    State("p1-active-list-store", "data"),
+    prevent_initial_call=True,
+)
+def remove_from_active_list(
+    remove_clicks,
+    existing_options,
+    existing_values,
+    active_store,
+):
+    """
+    Remove a strategy from the Active list when × button is clicked.
+    
+    - Sets is_active=False, is_selected=False.
+    - If is_saved=True: remains in Universe.
+    - If is_saved=False: removed from memory entirely.
+    """
+    triggered_id = ctx.triggered_id
+    
+    if not isinstance(triggered_id, dict) or triggered_id.get("type") != "active-row-remove":
+        return no_update, no_update
+    
+    # Check if any button was actually clicked
+    if not any(n for n in (remove_clicks or []) if n):
+        return no_update, no_update
+    
+    uid_to_remove = triggered_id.get("uid")
+    if not uid_to_remove:
+        return no_update, no_update
+    
+    existing_options = existing_options or []
+    existing_values = existing_values or []
+    active_store = active_store or []
+    
+    # Find the strategy's sid (checklist value)
+    sid_to_remove = None
+    is_saved = False
+    
+    for item in active_store:
+        if item.get("uid") == uid_to_remove:
+            sid_to_remove = item.get("sid")
+            is_saved = item.get("is_saved", False)
+            break
+    
+    if not sid_to_remove:
+        # Try to find by uid in options
+        for opt in existing_options:
+            meta = p1_strategy_store.get(opt["value"], {})
+            if meta.get("uid") == uid_to_remove:
+                sid_to_remove = opt["value"]
+                is_saved = meta.get("is_saved", False)
+                break
+    
+    if not sid_to_remove:
+        return no_update, no_update
+    
+    # Remove from options
+    new_options = [opt for opt in existing_options if opt["value"] != sid_to_remove]
+    new_values = [v for v in existing_values if v != sid_to_remove]
+    
+    # If not saved, remove from memory store
+    if not is_saved:
+        p1_strategy_store.pop(sid_to_remove, None)
+        p1_strategy_store.pop(uid_to_remove, None)
+    else:
+        # Update flags in store
+        if sid_to_remove in p1_strategy_store:
+            p1_strategy_store[sid_to_remove]["is_active"] = False
+            p1_strategy_store[sid_to_remove]["is_selected"] = False
+    
+    return new_options, new_values
+
+
+@callback(
+    Output("p1-strategy-checklist", "value", allow_duplicate=True),
+    Input({"type": "active-row-checkbox", "uid": ALL}, "value"),
+    State("p1-strategy-checklist", "options"),
+    State("p1-strategy-checklist", "value"),
+    State("p1-active-list-store", "data"),
+    prevent_initial_call=True,
+)
+def sync_active_checkbox_to_checklist(
+    checkbox_values,
+    existing_options,
+    existing_values,
+    active_store,
+):
+    """
+    Sync the Active row checkboxes to the main checklist values.
+    This ensures is_selected state is properly tracked.
+    """
+    triggered_id = ctx.triggered_id
+    
+    if not isinstance(triggered_id, dict) or triggered_id.get("type") != "active-row-checkbox":
+        return no_update
+    
+    uid = triggered_id.get("uid")
+    if not uid:
+        return no_update
+    
+    existing_options = existing_options or []
+    existing_values = existing_values or []
+    active_store = active_store or []
+    
+    # Find the sid for this uid
+    sid = None
+    for item in active_store:
+        if item.get("uid") == uid:
+            sid = item.get("sid")
+            break
+    
+    if not sid:
+        return no_update
+    
+    # Find the checkbox value that was just changed
+    new_is_selected = None
+    for opt in existing_options:
+        meta = p1_strategy_store.get(opt["value"], {})
+        if meta.get("uid") == uid or opt["value"] == sid:
+            # Get the index in active_store to find checkbox value
+            for i, item in enumerate(active_store):
+                if item.get("uid") == uid:
+                    if i < len(checkbox_values):
+                        new_is_selected = checkbox_values[i]
+                    break
+            break
+    
+    if new_is_selected is None:
+        return no_update
+    
+    # Update values
+    new_values = list(existing_values)
+    if new_is_selected and sid not in new_values:
+        new_values.append(sid)
+    elif not new_is_selected and sid in new_values:
+        new_values.remove(sid)
+    
+    return new_values

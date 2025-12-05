@@ -35,8 +35,10 @@ from core.registry import (
     INTERNAL_STRATEGY_DIR,
 )
 
+
 # In-memory store for strategies loaded in this session (shared across pages)
 # Key: strategy uid, Value: dict with metadata (uid, name, file_path, cached df, etc.)
+
 p1_strategy_store = {}
 
 
@@ -952,13 +954,29 @@ def load_or_toggle_strategies(
     - Errors are routed to the app-notifications store instead of inline display.
     """
     triggered_id = ctx.triggered_id
+
+    #Diagnostic    
+    #print(f"[TRACE load_or_toggle_strategies] triggered={triggered_id} n_load={n_clicks_load} n_load_portfolio={n_clicks_load_portfolio} select_all_value={select_all_value} existing_options_len={len(existing_options or [])}")
+
     
     # Initialize existing notifications if None
     existing_notifications = existing_notifications or []
 
     # Initial state: nothing has happened yet
     if triggered_id is None:
+        # Defensive: ensure any leftover in-memory store is cleared at cold start.
+        # This prevents previously-loaded strategies (from an earlier session)
+        # being displayed in Active after a kernel/page reload.
+        try:
+            p1_strategy_store.clear()
+        except Exception:
+            # keep silent if store not present for any reason
+            pass
+
+        # Also ensure the active list store is empty (safe guard)
+        # The visible UI will get an empty list and (0) badge.
         return [], [], False, "No strategies loaded yet.", current_portfolio_id, existing_notifications
+
 
 
     existing_options = existing_options or []
@@ -1560,7 +1578,7 @@ def _build_universe_row(uid: str, name: str, is_multi_selected: bool, is_active:
     Input("p1-strategy-checklist", "options"),
     Input("p1-strategy-checklist", "value"),
     Input({"type": "active-row-checkbox", "uid": ALL}, "value"),
-    Input({"type": "active-row-remove", "uid": ALL}, "n_clicks"),
+    #Input({"type": "active-row-remove", "uid": ALL}, "n_clicks"),
     State("p1-active-list-store", "data"),
     prevent_initial_call=True,
 )
@@ -1568,7 +1586,7 @@ def update_active_list_display(
     checklist_options,
     checklist_values,
     checkbox_values,
-    remove_clicks,
+    #remove_clicks,
     active_store,
 ):
     """
@@ -1579,7 +1597,15 @@ def update_active_list_display(
     - Remove button is handled by remove_from_active_list; this callback
       just reflects the current contents of options/value.
     """
+    
+    #print(f"[DEBUG update_active_list_display] trig= {ctx.triggered_id} checklist_options={len(checklist_options)} checklist_values={len(checklist_values)} active_store_len={len(active_store or [])}", file=sys.stdout)
+   
+    
     triggered_id = ctx.triggered_id
+    
+    #Diagnostic
+    #print(f"[TRACE update_active_list_display] triggered={triggered_id} checklist_options_len={len(checklist_options or [])} checklist_values_len={len(checklist_values or [])} active_store_len={len(active_store or [])}")
+
 
     # Normalise inputs
     active_store = active_store or []
@@ -1664,6 +1690,9 @@ def update_active_list_display(
 
     # Keep store in sync with the current snapshot
     active_store = active_strategies
+    
+    #print(f"[DEBUG update_active_list_display] active_strategies={[(s.get('uid'), s.get('sid'), s.get('is_saved')) for s in active_strategies]}", file=sys.stdout)
+
 
     return container_children, count_badge, active_store, new_values
 
@@ -1874,6 +1903,33 @@ def move_to_active_from_universe(
     Sets is_active=True, is_selected=False for moved strategies.
     """
     triggered_id = ctx.triggered_id
+
+    # --- STRICT GUARD: only proceed on real user clicks ---
+    # Dash will sometimes call pattern-matching callbacks when components
+    # are created/removed. Make sure the trigger corresponds to a real
+    # n_clicks value before mutating state.
+    if isinstance(triggered_id, dict) and triggered_id.get("type") == "universe-row-quickadd":
+        # For pattern-matched quickadd buttons: check ctx.triggered[0]['value']
+        trig_list = ctx.triggered or []
+        trig_val = None
+        if trig_list and isinstance(trig_list, (list, tuple)):
+            trig_val = trig_list[0].get("value")
+        if not trig_val:
+            # no real click -> ignore this call
+            return no_update, no_update, no_update
+
+    elif triggered_id == "p1-universe-move-to-active-btn":
+        # Ensure the real move button was clicked
+        if not move_btn_clicks:
+            return no_update, no_update, no_update
+
+    else:
+        # Not a recognized user action -> do nothing
+        return no_update, no_update, no_update
+
+    #Diagnostic    
+    #print(f"[TRACE move_to_active_from_universe] triggered={triggered_id} move_btn_clicks={move_btn_clicks} quickadd_clicks_len={len(quickadd_clicks or [])}")
+
     
     existing_options = existing_options or []
     existing_values = existing_values or []
@@ -1948,6 +2004,11 @@ def move_to_active_from_universe(
             strategy_meta["is_active"] = True
             strategy_meta["is_selected"] = False
             
+            # don't overwrite existing stored entry accidentally - avoid duplicates when adding strategies check
+            # if internal_path in p1_strategy_store or uid in p1_strategy_store:
+            #     # already present in memory; skip (or update flags carefully)
+            #     continue
+            
             p1_strategy_store[internal_path] = strategy_meta
             p1_strategy_store[uid] = strategy_meta
         except (FileNotFoundError, PermissionError, pd.errors.EmptyDataError, pd.errors.ParserError):
@@ -1997,6 +2058,9 @@ def remove_from_active_list(
     if not uid_to_remove:
         return no_update, no_update
     
+    #Diagnostic
+    #print(f"[TRACE remove_from_active_list] triggered={triggered_id} remove_clicks={remove_clicks} existing_options_len={len(existing_options or [])} existing_values_len={len(existing_values or [])}")
+    
     existing_options = existing_options or []
     existing_values = existing_values or []
     active_store = active_store or []
@@ -2038,6 +2102,9 @@ def remove_from_active_list(
             p1_strategy_store[sid_to_remove]["is_selected"] = False
     
     return new_options, new_values
+
+    
+
 
 
 # @callback(

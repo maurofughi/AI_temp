@@ -373,6 +373,9 @@ def build_strategy_sidebar():
         dcc.Store(id="p1-active-list-store", data=[]),
         dcc.Store(id="p1-universe-list-store", data=[]),
         
+        # Phase 2 weights/factors store (per-strategy, keyed by UID)
+        dcc.Store(id="p2-weights-store", data={}),
+        
         # Hidden checklist to maintain backward compatibility with existing callbacks
         html.Div(
             dcc.Checklist(
@@ -388,17 +391,46 @@ def build_strategy_sidebar():
             [
                 dbc.CardHeader(
                     [
-                        html.Span(
-                            "Active",
-                            style={"fontWeight": "bold"},
+                        html.Div(
+                            [
+                                html.Span(
+                                    "Active",
+                                    style={"fontWeight": "bold"},
+                                ),
+                                html.Span(
+                                    id="p1-active-count-badge",
+                                    children=" (0)",
+                                    style={
+                                        "fontSize": "0.85rem",
+                                        "color": "#AAAAAA",
+                                        "marginLeft": "0.25rem",
+                                    },
+                                ),
+                            ],
+                            style={
+                                "display": "flex",
+                                "alignItems": "center",
+                            },
                         ),
-                        html.Span(
-                            id="p1-active-count-badge",
-                            children=" (0)",
-                            style={"fontSize": "0.85rem", "color": "#AAAAAA"},
+                        # Phase 2: open weights/factors panel
+                        dbc.Button(
+                            "Weights",
+                            id="p2-open-weights-panel-btn",
+                            color="info",
+                            size="sm",
+                            outline=True,
+                            style={
+                                "fontSize": "0.7rem",
+                                "padding": "0.15rem 0.5rem",
+                            },
+                            title="Edit per-strategy factors / weights",
                         ),
                     ],
-                    style={"display": "flex", "alignItems": "center", "justifyContent": "space-between"},
+                    style={
+                        "display": "flex",
+                        "alignItems": "center",
+                        "justifyContent": "space-between",
+                    },
                 ),
                 dbc.CardBody(
                     [
@@ -418,7 +450,10 @@ def build_strategy_sidebar():
                             children=[
                                 html.Div(
                                     "No active strategies.",
-                                    style={"fontSize": "0.8rem", "color": "#888888"},
+                                    style={
+                                        "fontSize": "0.8rem",
+                                        "color": "#888888",
+                                    },
                                 )
                             ],
                             style={
@@ -428,11 +463,70 @@ def build_strategy_sidebar():
                             },
                         ),
                     ],
-                    style={"paddingTop": "0.5rem", "paddingBottom": "0.5rem"},
+                    style={
+                        "paddingTop": "0.5rem",
+                        "paddingBottom": "0.5rem",
+                    },
                 ),
             ],
             style={"marginBottom": "0.5rem"},
         ),
+
+        # Weights / Factors panel (Phase 2) – slides in from the left
+        dbc.Offcanvas(
+            id="p2-weights-panel",
+            title="Portfolio Weights (Factors)",
+            placement="start",
+            is_open=False,
+            scrollable=True,
+            style={
+                "width": "360px",
+                "backgroundColor": "#1b1b1b",
+                "color": "#EEEEEE",
+            },
+            children=[
+                # Top controls row
+                html.Div(
+                    [
+                        dbc.Button(
+                            "Equal factors",
+                            id="p2-weights-equalize-btn",
+                            color="primary",
+                            size="sm",
+                            outline=True,
+                            style={
+                                "fontSize": "0.75rem",
+                                "padding": "0.15rem 0.4rem",
+                                "marginRight": "0.35rem",
+                            },
+                            title="Set all factors to 1.00 for active strategies",
+                        ),
+                        dbc.Button(
+                            "Reset to saved",
+                            id="p2-weights-reset-saved-btn",
+                            color="secondary",
+                            size="sm",
+                            outline=True,
+                            style={
+                                "fontSize": "0.75rem",
+                                "padding": "0.15rem 0.4rem",
+                            },
+                            title="Reload factors from current portfolio (or 1.00 if none)",
+                        ),
+                    ],
+                    style={
+                        "display": "flex",
+                        "alignItems": "center",
+                        "marginBottom": "0.5rem",
+                        "gap": "0.25rem",
+                    },
+                ),
+                html.Hr(style={"margin": "0.25rem 0 0.5rem 0"}),
+                # Summary + table will be rendered here
+                html.Div(id="p2-weights-panel-body"),
+            ],
+        ),
+
         
         # ===== Universe List (bottom block) =====
         dbc.Card(
@@ -539,6 +633,18 @@ def build_strategy_sidebar():
         width=3,
         style={"position": "sticky", "top": "80px"},
     )
+
+@callback(
+    Output("p2-weights-panel", "is_open"),
+    Input("p2-open-weights-panel-btn", "n_clicks"),
+    State("p2-weights-panel", "is_open"),
+    prevent_initial_call=True,
+)
+def toggle_weights_panel(n_clicks, is_open):
+    """Open/close the weights/factors panel from the Active header button."""
+    if not n_clicks:
+        return is_open
+    return not is_open
 
 @callback(
     Output("p1-uploaded-files", "children"),
@@ -660,6 +766,7 @@ def toggle_data_panel(n_clicks, is_open):
         return is_open
     return not is_open
 
+
 @callback(
     Output("p1-strategy-registry-sync", "data"),
     Input("p1-strategy-checklist", "value"),
@@ -693,6 +800,7 @@ def sync_registry_phase1_active(selected_ids):
     State("p1-current-portfolio-id", "data"),
     State("p1-strategy-checklist", "value"),
     State("p1-portfolio-name-input", "value"),
+    State("p2-weights-store", "data"),   
     prevent_initial_call=True,
 )
 def save_or_saveas_portfolio(
@@ -701,6 +809,7 @@ def save_or_saveas_portfolio(
     current_portfolio_id,
     selected_strategy_ids,
     portfolio_name,
+    weights_store, 
 ):
     """
     Save / Save As logic for Phase 1 portfolios.
@@ -892,6 +1001,21 @@ def save_or_saveas_portfolio(
     if failed_uids:
         copy_warning = f" Warning: {len(failed_uids)} strategy(s) could not be saved internally."
 
+    
+    # ---------- Build per-strategy factors for this portfolio (Phase 2) ----------
+    # weights_store structure: { uid: {"factor": float}, ... }
+    weights_store = weights_store or {}
+    strategy_factors = {}
+    for uid in selected_uids:
+        entry = weights_store.get(uid, {}) if isinstance(weights_store, dict) else {}
+        raw = entry.get("factor", 1.0)
+        try:
+            val = float(raw)
+        except (TypeError, ValueError):
+            val = 1.0
+        strategy_factors[uid] = round(val, 4)
+    
+    
     # ---------- Add or update portfolio in registry ----------
     portfolio_obj = {
         "id": portfolio_id,
@@ -899,6 +1023,8 @@ def save_or_saveas_portfolio(
         "strategy_uids": selected_uids,
         "strategy_ids": selected_strategy_ids,  # Keep for backward compatibility
         "phase1_done": True,
+        # Phase 2: per-strategy factors (used to reconstruct weights later)
+        "strategy_factors": strategy_factors,
     }
     add_or_update_portfolio(portfolio_obj)
 
@@ -1728,6 +1854,334 @@ def update_active_list_display(
 
     return container_children, count_badge, active_store, new_values
 
+
+@callback(
+    Output("p2-weights-panel-body", "children"),
+    Output("p2-weights-store", "data"),
+    Input("p1-active-list-store", "data"),
+    Input("p1-current-portfolio-id", "data"),
+    Input("p2-weights-equalize-btn", "n_clicks"),
+    Input("p2-weights-reset-saved-btn", "n_clicks"),
+    Input({"type": "p2-factor-input", "uid": ALL}, "value"),
+    State("p2-weights-store", "data"),
+    prevent_initial_call=True,
+)
+def update_weights_panel(
+    active_store,
+    current_portfolio_id,
+    n_equalize,
+    n_reset,
+    factor_values,
+    weights_store,
+):
+    """
+    Phase 2 – Weights/Factors panel logic.
+
+    - Base source of truth is p2-weights-store (per-UID factors).
+    - On Active list changes: ensure every active UID has a factor (from portfolio
+      if present, else 1.0) and drop non-active UIDs.
+    - 'Equal factors': set all active UIDs to 1.0.
+    - 'Reset to saved': reload factors strictly from *current* portfolio's
+      strategy_factors; fallback to 1.0 when missing or when the strategy does
+      not belong to the current portfolio.
+    - Manual edit: factor inputs overwrite store values one-by-one.
+    - Normalised weights = factor_pos / sum(factor_pos); used only for analytics.
+    """
+
+    triggered_id = ctx.triggered_id
+    active_store = active_store or []
+    weights_store = weights_store or {}
+
+    # Extract active *and selected* rows and UIDs in stable order
+    active_rows = [
+        row
+        for row in (active_store or [])
+        if row.get("uid") and row.get("is_selected", False)
+    ]
+    active_uids = [row["uid"] for row in active_rows]
+
+    # If no active strategies, clear store and show simple message
+    if not active_uids:
+        return (
+            html.Div(
+                "No active strategies – add strategies to Active list first.",
+                style={"fontSize": "0.85rem", "color": "#AAAAAA"},
+            ),
+            {},
+        )
+
+    # Map uid -> in_current_portfolio flag for convenience
+    in_current_map = {
+        row["uid"]: bool(row.get("is_in_current_portfolio", False))
+        for row in active_rows
+        if row.get("uid")
+    }
+
+    # Start from existing store for these UIDs
+    base_factors = {}
+    for uid in active_uids:
+        entry = weights_store.get(uid, {}) if isinstance(weights_store, dict) else {}
+        # We store factors as {"factor": float}
+        val = entry.get("factor", None)
+        base_factors[uid] = val
+
+    # Helper: load factors from current portfolio in registry
+    def _load_portfolio_factors():
+        if not current_portfolio_id:
+            return {}
+        registry = load_registry()
+        portfolio = get_portfolio(current_portfolio_id)
+        if not portfolio:
+            return {}
+        return portfolio.get("strategy_factors", {}) or {}
+
+    # Decide what caused this callback
+    # ------------------------------------------------------------------
+    if triggered_id == "p2-weights-equalize-btn":
+        # Equalise -> every active UID gets factor = 1.0
+        for uid in active_uids:
+            base_factors[uid] = 1.0
+
+    elif triggered_id == "p2-weights-reset-saved-btn":
+        # Reset strictly from *current* portfolio's saved factors.
+        # Strategies not in current portfolio OR without a saved factor -> 1.0.
+        saved_factors = _load_portfolio_factors()
+        for uid in active_uids:
+            if in_current_map.get(uid) and uid in saved_factors:
+                val = saved_factors.get(uid)
+            else:
+                val = 1.0
+            try:
+                base_factors[uid] = float(val)
+            except (TypeError, ValueError):
+                base_factors[uid] = 1.0
+
+    elif isinstance(triggered_id, dict) and triggered_id.get("type") == "p2-factor-input":
+        # Manual factor edit – use the factor_values aligned with active_rows order
+        factor_values = factor_values or []
+        for idx, uid in enumerate(active_uids):
+            if idx < len(factor_values) and factor_values[idx] is not None:
+                try:
+                    v = float(factor_values[idx])
+                except (TypeError, ValueError):
+                    # If user types junk, keep previous or default to 1.0
+                    v = base_factors.get(uid, 1.0) or 1.0
+            else:
+                v = base_factors.get(uid, 1.0) or 1.0
+            if v <= 0:
+                v = 1.0
+            base_factors[uid] = v
+
+    else:
+        # Triggered by changes in Active list or current portfolio id.
+        saved_factors = _load_portfolio_factors()
+
+        if triggered_id == "p1-current-portfolio-id":
+            # Portfolio changed: DO NOT reuse factors from previous portfolio.
+            # Re-initialise:
+            #  - If strategy is in current portfolio and has saved factor -> use it
+            #  - Otherwise -> 1.0
+            for uid in active_uids:
+                if in_current_map.get(uid) and uid in saved_factors:
+                    val = saved_factors.get(uid)
+                else:
+                    val = 1.0
+                try:
+                    base_factors[uid] = float(val)
+                except (TypeError, ValueError):
+                    base_factors[uid] = 1.0
+        else:
+            # Active list changed (add/remove strategies) but portfolio is same:
+            #  - Keep existing factors when possible
+            #  - New strategies:
+            #       * if they are part of current portfolio and have a saved factor ->
+            #         use it
+            #       * otherwise -> 1.0
+            for uid in active_uids:
+                val = base_factors.get(uid)
+                if val is None:
+                    if in_current_map.get(uid) and uid in saved_factors:
+                        val = saved_factors.get(uid)
+                    else:
+                        val = 1.0
+                try:
+                    base_factors[uid] = float(val)
+                except (TypeError, ValueError):
+                    base_factors[uid] = 1.0
+
+    # Build new store restricted to active UIDs
+    new_store = {
+        uid: {"factor": float(base_factors.get(uid, 1.0))}
+        for uid in active_uids
+    }
+
+    # Compute normalised weights (for analytics only – not saved)
+    positive_factors = [
+        max(0.0, float(new_store[uid]["factor"])) for uid in active_uids
+    ]
+    sum_pos = sum(positive_factors)
+    if sum_pos > 0:
+        weights = {
+            uid: (max(0.0, float(new_store[uid]["factor"])) / sum_pos)
+            for uid in active_uids
+        }
+    else:
+        weights = {uid: 0.0 for uid in active_uids}
+
+    # Build panel body UI
+    # ------------------------------------------------------------------
+    total_weight_pct = sum(weights[uid] for uid in active_uids) * 100.0
+    total_factors = sum(float(new_store[uid]["factor"]) for uid in active_uids)
+
+    summary = html.Div(
+        [
+            html.Span(
+                f"Σ factors (active): {total_factors:.3f}",
+                style={"marginRight": "0.75rem"},
+            ),
+            html.Span(
+                f"Σ weights (normalised): {total_weight_pct:.1f}%",
+                style={"color": "#AAAAAA"},
+            ),
+        ],
+        style={
+            "fontSize": "0.8rem",
+            "marginBottom": "0.5rem",
+        },
+    )
+
+    # Header row
+    header_row = html.Div(
+        [
+            html.Span(
+                "Strategy",
+                style={"flex": "1", "fontSize": "0.75rem", "fontWeight": "bold"},
+            ),
+            html.Span(
+                "Factor",
+                style={
+                    "width": "80px",
+                    "textAlign": "right",
+                    "fontSize": "0.75rem",
+                    "fontWeight": "bold",
+                },
+            ),
+            html.Span(
+                "Weight %",
+                style={
+                    "width": "80px",
+                    "textAlign": "right",
+                    "fontSize": "0.75rem",
+                    "fontWeight": "bold",
+                },
+            ),
+        ],
+        style={
+            "display": "flex",
+            "alignItems": "center",
+            "padding": "0.2rem 0.25rem",
+            "borderBottom": "1px solid #444444",
+            "marginBottom": "0.2rem",
+        },
+    )
+
+    # Data rows
+    rows = []
+    for idx, row in enumerate(active_rows):
+        uid = row["uid"]
+        name = row.get("name", uid)
+        factor = float(new_store[uid]["factor"])
+        weight_pct = weights.get(uid, 0.0) * 100.0
+        in_current = bool(row.get("is_in_current_portfolio", False))
+
+        # Strategy name (truncated for display, full in tooltip)
+        display_name = name
+        if len(display_name) > 30:
+            display_name = display_name[:27] + "..."
+
+        row_style = {
+            "display": "flex",
+            "alignItems": "center",
+            "padding": "0.2rem 0.25rem",
+            "marginBottom": "0.1rem",
+            "borderRadius": "4px",
+            "backgroundColor": "rgba(44, 160, 44, 0.12)"
+            if in_current
+            else "rgba(31, 119, 180, 0.06)",
+        }
+
+        rows.append(
+            html.Div(
+                [
+                    # Color strip – placeholder color, later you can wire this to your
+                    # actual strategy color map for charts.
+                    html.Div(
+                        style={
+                            "width": "6px",
+                            "height": "22px",
+                            "backgroundColor": "#888888",
+                            "borderRadius": "3px",
+                            "marginRight": "6px",
+                        }
+                    ),
+                    # Strategy name (truncated), full name in title
+                    html.Span(
+                        display_name,
+                        style={
+                            "flex": "1",
+                            "fontSize": "0.78rem",
+                            "overflow": "hidden",
+                            "textOverflow": "ellipsis",
+                            "whiteSpace": "nowrap",
+                        },
+                        title=name,
+                    ),
+                    # Factor input
+                    dcc.Input(
+                        id={"type": "p2-factor-input", "uid": uid},
+                        type="number",
+                        step=0.1,
+                        min=0,
+                        value=round(factor, 3),
+                        style={
+                            "width": "80px",
+                            "fontSize": "0.78rem",
+                            "textAlign": "right",
+                            "marginRight": "0.35rem",
+                            "backgroundColor": "#2a2a2a",
+                            "color": "#EEEEEE",
+                            "border": "1px solid #555555",
+                        },
+                    ),
+                    # Weight %
+                    html.Span(
+                        f"{weight_pct:5.1f}%",
+                        style={
+                            "width": "80px",
+                            "textAlign": "right",
+                            "fontSize": "0.78rem",
+                        },
+                    ),
+                ],
+                style=row_style,
+            )
+        )
+
+    body = html.Div(
+        [
+            summary,
+            header_row,
+            html.Div(
+                rows,
+                style={
+                    "maxHeight": "70vh",
+                    "overflowY": "auto",
+                },
+            ),
+        ]
+    )
+
+    return body, new_store
 
 
 

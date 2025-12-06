@@ -367,166 +367,175 @@ def build_strategy_sidebar():
     - Active List (top): strategies currently in the working set (is_active=True)
     - Universe List (bottom): all saved strategies (is_saved=True)
     """
-    return dbc.Col(
-        [
-            # Stores for strategy states
-            dcc.Store(id="p1-strategy-registry-sync"),
-            dcc.Store(id="p1-active-list-store", data=[]),
-            dcc.Store(id="p1-universe-list-store", data=[]),
-            
-            # Hidden checklist to maintain backward compatibility with existing callbacks
-            html.Div(
-                dcc.Checklist(
-                    id="p1-strategy-checklist",
-                    options=[],
-                    value=[],
+    sidebar_children = [        
+        # Stores for strategy states
+        dcc.Store(id="p1-strategy-registry-sync"),
+        dcc.Store(id="p1-active-list-store", data=[]),
+        dcc.Store(id="p1-universe-list-store", data=[]),
+        
+        # Hidden checklist to maintain backward compatibility with existing callbacks
+        html.Div(
+            dcc.Checklist(
+                id="p1-strategy-checklist",
+                options=[],
+                value=[],
+            ),
+            style={"display": "none"},
+        ),
+        
+        # ===== Active List (top block) =====
+        dbc.Card(
+            [
+                dbc.CardHeader(
+                    [
+                        html.Span(
+                            "Active",
+                            style={"fontWeight": "bold"},
+                        ),
+                        html.Span(
+                            id="p1-active-count-badge",
+                            children=" (0)",
+                            style={"fontSize": "0.85rem", "color": "#AAAAAA"},
+                        ),
+                    ],
+                    style={"display": "flex", "alignItems": "center", "justifyContent": "space-between"},
                 ),
-                style={"display": "none"},
-            ),
-            
-            # ===== Active List (top block) =====
-            dbc.Card(
-                [
-                    dbc.CardHeader(
-                        [
-                            html.Span(
-                                "Active",
-                                style={"fontWeight": "bold"},
-                            ),
-                            html.Span(
-                                id="p1-active-count-badge",
-                                children=" (0)",
-                                style={"fontSize": "0.85rem", "color": "#AAAAAA"},
-                            ),
-                        ],
-                        style={"display": "flex", "alignItems": "center", "justifyContent": "space-between"},
-                    ),
-                    dbc.CardBody(
-                        [
-                            # Select/Deselect all for Active list
-                            dbc.Checkbox(
-                                id="p1-strategy-select-all",
-                                value=False,
-                                label="Select / deselect all",
-                                style={
-                                    "fontSize": "0.8rem",
-                                    "marginBottom": "0.4rem",
-                                },
-                            ),
-                            # Active list container - rendered dynamically
-                            html.Div(
-                                id="p1-active-list-container",
-                                children=[
-                                    html.Div(
-                                        "No active strategies.",
-                                        style={"fontSize": "0.8rem", "color": "#888888"},
-                                    )
-                                ],
-                                style={
-                                    "maxHeight": "200px",
-                                    "overflowY": "auto",
-                                    "fontSize": "0.85rem",
-                                },
-                            ),
-                        ],
-                        style={"paddingTop": "0.5rem", "paddingBottom": "0.5rem"},
-                    ),
-                ],
-                style={"marginBottom": "0.5rem"},
-            ),
-            
-            # ===== Universe List (bottom block) =====
-            dbc.Card(
-                [
-                    dbc.CardHeader(
-                        [
-                            html.Span(
-                                "Universe",
-                                style={"fontWeight": "bold"},
-                            ),
-                            html.Span(
-                                id="p1-universe-count-badge",
-                                children=" (0)",
-                                style={"fontSize": "0.85rem", "color": "#AAAAAA"},
-                            ),
-                        ],
-                        style={"display": "flex", "alignItems": "center", "justifyContent": "space-between"},
-                    ),
-                    dbc.CardBody(
-                        [
-                            # Search box
-                            dcc.Input(
-                                id="p1-universe-search",
-                                type="text",
-                                placeholder="Search strategies...",
-                                style={
-                                    "width": "100%",
-                                    "fontSize": "0.8rem",
-                                    "marginBottom": "0.4rem",
-                                    "padding": "0.25rem 0.5rem",
-                                    "borderRadius": "4px",
-                                    "border": "1px solid #444444",
-                                    "backgroundColor": "#2a2a2a",
-                                    "color": "#EEEEEE",
-                                },
-                            ),
-                            # Header controls
-                            html.Div(
-                                [
-                                    dbc.Checkbox(
-                                        id="p1-universe-select-all",
-                                        value=False,
-                                        label="Select all (filtered)",
-                                        style={"fontSize": "0.75rem"},
-                                    ),
-                                    dbc.Button(
-                                        "Move → Active",
-                                        id="p1-universe-move-to-active-btn",
-                                        color="primary",
-                                        size="sm",
-                                        outline=True,
-                                        style={"fontSize": "0.7rem", "padding": "0.15rem 0.4rem"},
-                                    ),
-                                ],
-                                style={
-                                    "display": "flex",
-                                    "justifyContent": "space-between",
-                                    "alignItems": "center",
-                                    "marginBottom": "0.4rem",
-                                },
-                            ),
-                            # Universe list container - rendered dynamically
-                            html.Div(
-                                id="p1-universe-list-container",
-                                children=[
-                                    html.Div(
-                                        "No strategies in universe.",
-                                        style={"fontSize": "0.8rem", "color": "#888888"},
-                                    )
-                                ],
-                                style={
-                                    "maxHeight": "250px",
-                                    "overflowY": "auto",
-                                    "fontSize": "0.85rem",
-                                },
-                            ),
-                        ],
-                        style={"paddingTop": "0.5rem", "paddingBottom": "0.5rem"},
-                    ),
-                ],
-            ),
-            
-            # Summary message under both lists
-            html.Div(
-                id="p1-strategy-summary",
-                children="",
-                style={
-                    "fontSize": "0.8rem",
-                    "marginTop": "0.4rem",
-                    "color": "#AAAAAA",
-                },
-            ),
-        ],
+                dbc.CardBody(
+                    [
+                        # Select/Deselect all for Active list
+                        dbc.Checkbox(
+                            id="p1-strategy-select-all",
+                            value=False,
+                            label="Select / deselect all",
+                            style={
+                                "fontSize": "0.8rem",
+                                "marginBottom": "0.4rem",
+                            },
+                        ),
+                        # Active list container - rendered dynamically
+                        html.Div(
+                            id="p1-active-list-container",
+                            children=[
+                                html.Div(
+                                    "No active strategies.",
+                                    style={"fontSize": "0.8rem", "color": "#888888"},
+                                )
+                            ],
+                            style={
+                                "maxHeight": "200px",
+                                "overflowY": "auto",
+                                "fontSize": "0.85rem",
+                            },
+                        ),
+                    ],
+                    style={"paddingTop": "0.5rem", "paddingBottom": "0.5rem"},
+                ),
+            ],
+            style={"marginBottom": "0.5rem"},
+        ),
+        
+        # ===== Universe List (bottom block) =====
+        dbc.Card(
+            [
+                dbc.CardHeader(
+                    [
+                        html.Span(
+                            "Universe",
+                            style={"fontWeight": "bold"},
+                        ),
+                        html.Span(
+                            id="p1-universe-count-badge",
+                            children=" (0)",
+                            style={"fontSize": "0.85rem", "color": "#AAAAAA"},
+                        ),
+                    ],
+                    style={"display": "flex", "alignItems": "center", "justifyContent": "space-between"},
+                ),
+                dbc.CardBody(
+                    [
+                        # Search box
+                        dcc.Input(
+                            id="p1-universe-search",
+                            type="text",
+                            placeholder="Search strategies...",
+                            style={
+                                "width": "100%",
+                                "fontSize": "0.8rem",
+                                "marginBottom": "0.4rem",
+                                "padding": "0.25rem 0.5rem",
+                                "borderRadius": "4px",
+                                "border": "1px solid #444444",
+                                "backgroundColor": "#2a2a2a",
+                                "color": "#EEEEEE",
+                            },
+                        ),
+                        # Header controls
+                        html.Div(
+                            [
+                                dbc.Checkbox(
+                                    id="p1-universe-select-all",
+                                    value=False,
+                                    label="Select all (filtered)",
+                                    style={"fontSize": "0.75rem"},
+                                ),
+                                dbc.Button(
+                                    "Move → Active",
+                                    id="p1-universe-move-to-active-btn",
+                                    color="primary",
+                                    size="sm",
+                                    outline=True,
+                                    style={"fontSize": "0.7rem", "padding": "0.15rem 0.4rem"},
+                                ),
+                            ],
+                            style={
+                                "display": "flex",
+                                "justifyContent": "space-between",
+                                "alignItems": "center",
+                                "marginBottom": "0.4rem",
+                            },
+                        ),
+                        # Universe list container - rendered dynamically
+                        html.Div(
+                            id="p1-universe-list-container",
+                            children=[
+                                html.Div(
+                                    "No strategies in universe.",
+                                    style={"fontSize": "0.8rem", "color": "#888888"},
+                                )
+                            ],
+                            style={
+                                "maxHeight": "250px",
+                                "overflowY": "auto",
+                                "fontSize": "0.85rem",
+                            },
+                        ),
+                    ],
+                    style={"paddingTop": "0.5rem", "paddingBottom": "0.5rem"},
+                ),
+            ],
+        ),
+        
+        # Summary message under both lists
+        html.Div(
+            id="p1-strategy-summary",
+            children="",
+            style={
+                "fontSize": "0.8rem",
+                "marginTop": "0.4rem",
+                "color": "#AAAAAA",
+            },
+        ),
+    ]
+    
+    return dbc.Col(
+        html.Div(
+            sidebar_children,
+            # Sticky wrapper so the whole left panel stays visible while scrolling
+            style={
+                "position": "sticky",
+                "top": "80px",
+            },
+        ),
         width=3,
         style={"position": "sticky", "top": "80px"},
     )
@@ -1409,14 +1418,21 @@ def get_portfolio_badge_color(count: int) -> str:
     elif count == 2:
         return "#2ca02c"  # Green
     elif count <= 4:
-        return "#ffbb00"  # Yellow
+        return "blueviolet"  # Yellow
     elif count == 5:
         return "#ff7f0e"  # Orange
     else:
         return "#d62728"  # Red
 
 
-def _build_active_row(uid: str, name: str, is_selected: bool, is_saved: bool, portfolio_count: int = 0):
+def _build_active_row(
+    uid: str,
+    name: str,
+    is_selected: bool,
+    is_saved: bool,
+    portfolio_count: int = 0,
+    is_in_current_portfolio: bool = False,
+):
     """
     Build a single row for the Active List with:
     - Checkbox for is_selected
@@ -1424,6 +1440,7 @@ def _build_active_row(uid: str, name: str, is_selected: bool, is_saved: bool, po
     - Remove (×) icon
     - Saved shading background
     - Optional portfolio badge
+    - Stronger shading if part of the currently loaded portfolio
     """
     row_style = {
         "display": "flex",
@@ -1432,11 +1449,16 @@ def _build_active_row(uid: str, name: str, is_selected: bool, is_saved: bool, po
         "marginBottom": "0.15rem",
         "borderRadius": "4px",
     }
-    
-    # Add tinted background for saved strategies
+
+    # Base: saved strategies get a light blue tint
     if is_saved:
-        row_style["backgroundColor"] = "rgba(31, 119, 180, 0.15)"  # subtle blue tint
-    
+        row_style["backgroundColor"] = "rgba(31, 119, 180, 0.10)"  # light blue
+
+    # If this strategy belongs to the currently loaded portfolio,
+    # override with a slightly stronger greenish tint
+    if is_in_current_portfolio:
+        row_style["backgroundColor"] = "rgba(44, 160, 44, 0.18)"  # light green
+
     return html.Div(
         [
             # Checkbox for is_selected
@@ -1445,6 +1467,7 @@ def _build_active_row(uid: str, name: str, is_selected: bool, is_saved: bool, po
                 value=is_selected,
                 style={"marginRight": "0.5rem"},
             ),
+
             # Strategy name
             html.Span(
                 name,
@@ -1457,6 +1480,7 @@ def _build_active_row(uid: str, name: str, is_selected: bool, is_saved: bool, po
                 },
                 title=name,
             ),
+
             # Portfolio badge (optional)
             html.Span(
                 str(portfolio_count) if portfolio_count > 0 else "",
@@ -1467,28 +1491,31 @@ def _build_active_row(uid: str, name: str, is_selected: bool, is_saved: bool, po
                     "backgroundColor": get_portfolio_badge_color(portfolio_count),
                     "color": "white",
                     "marginRight": "0.3rem",
-                    "display": "inline-block" if is_saved and portfolio_count > 0 else "none",
+                    "display": "inline-block"
+                    if is_saved and portfolio_count > 0
+                    else "none",
                 },
                 title=f"In {portfolio_count} portfolio(s)" if is_saved else "",
             ),
+
             # Remove button
-            html.Button(
-                "×",
+            # Remove-from-active icon (Bootstrap Icons)
+            html.I(
+                className="bi bi-x-circle",
                 id={"type": "active-row-remove", "uid": uid},
                 style={
-                    "border": "none",
-                    "background": "none",
-                    "color": "#ff6666",
+                    "color": "pink",
                     "cursor": "pointer",
-                    "fontSize": "1rem",
-                    "padding": "0 0.25rem",
-                    "lineHeight": "1",
+                    "fontSize": "1.1rem",
+                    "marginLeft": "0.25rem",
                 },
                 title="Remove from Active",
             ),
+
         ],
         style=row_style,
     )
+
 
 
 def _build_universe_row(uid: str, name: str, is_multi_selected: bool, is_active: bool, 
@@ -1550,21 +1577,19 @@ def _build_universe_row(uid: str, name: str, is_multi_selected: bool, is_active:
                 title=tooltip_text,
             ),
             # Quick-add button
-            html.Button(
-                "+",
+            # Quick-add icon (Bootstrap Icons)
+            html.I(
+                className="bi bi-arrow-up-circle",
                 id={"type": "universe-row-quickadd", "uid": uid},
                 style={
-                    "border": "none",
-                    "background": "none",
                     "color": "#66ff66" if not is_active else "#666666",
                     "cursor": "pointer" if not is_active else "not-allowed",
-                    "fontSize": "1rem",
-                    "padding": "0 0.25rem",
-                    "lineHeight": "1",
+                    "fontSize": "1.1rem",
+                    "marginLeft": "0.25rem",
                 },
                 title="Add to Active" if not is_active else "Already in Active",
-                disabled=is_active,
             ),
+
         ],
         style=row_style,
     )
@@ -1580,32 +1605,26 @@ def _build_universe_row(uid: str, name: str, is_multi_selected: bool, is_active:
     Input({"type": "active-row-checkbox", "uid": ALL}, "value"),
     #Input({"type": "active-row-remove", "uid": ALL}, "n_clicks"),
     State("p1-active-list-store", "data"),
+    State("p1-current-portfolio-id", "data"),
     prevent_initial_call=True,
 )
 def update_active_list_display(
     checklist_options,
     checklist_values,
     checkbox_values,
-    #remove_clicks,
+    # remove_clicks,
     active_store,
+    current_portfolio_id,
 ):
     """
     Render the Active List based on current strategy state.
 
     Active List shows strategies present in p1-strategy-checklist.options.
     - Checkbox toggles is_selected (and updates checklist values).
-    - Remove button is handled by remove_from_active_list; this callback
-      just reflects the current contents of options/value.
+    - Remove button is handled by remove_from_active_list;
+      this callback just reflects the current contents of options/value.
     """
-    
-    #print(f"[DEBUG update_active_list_display] trig= {ctx.triggered_id} checklist_options={len(checklist_options)} checklist_values={len(checklist_values)} active_store_len={len(active_store or [])}", file=sys.stdout)
-   
-    
     triggered_id = ctx.triggered_id
-    
-    #Diagnostic
-    #print(f"[TRACE update_active_list_display] triggered={triggered_id} checklist_options_len={len(checklist_options or [])} checklist_values_len={len(checklist_values or [])} active_store_len={len(active_store or [])}")
-
 
     # Normalise inputs
     active_store = active_store or []
@@ -1615,7 +1634,18 @@ def update_active_list_display(
 
     registry = load_registry()
 
-    # Build base list of active strategies from options + current checklist values
+    # --- Determine which UIDs belong to the currently loaded portfolio ---
+    portfolio_uids = set()
+    if current_portfolio_id and registry.get("portfolios"):
+        for p in registry["portfolios"]:
+            if p.get("id") == current_portfolio_id:
+                # Prefer strategy_uids; fall back to legacy strategy_ids
+                portfolio_uids = set(
+                    p.get("strategy_uids", p.get("strategy_ids", []))
+                )
+                break
+
+    # --- Build base list of active strategies from options + current checklist values ---
     active_strategies = []
     for opt in checklist_options:
         sid = opt.get("value")
@@ -1636,6 +1666,9 @@ def update_active_list_display(
             portfolios = get_portfolios_for_uid(uid, registry)
             portfolio_count = len(portfolios)
 
+        # In current portfolio?
+        is_in_current_portfolio = uid in portfolio_uids
+
         active_strategies.append(
             {
                 "uid": uid,
@@ -1644,6 +1677,7 @@ def update_active_list_display(
                 "is_selected": is_selected,
                 "is_saved": is_saved,
                 "portfolio_count": portfolio_count,
+                "is_in_current_portfolio": is_in_current_portfolio,
             }
         )
 
@@ -1682,6 +1716,7 @@ def update_active_list_display(
                 is_selected=s["is_selected"],
                 is_saved=s["is_saved"],
                 portfolio_count=s["portfolio_count"],
+                is_in_current_portfolio=s["is_in_current_portfolio"],
             )
             for s in active_strategies
         ]
@@ -1690,11 +1725,9 @@ def update_active_list_display(
 
     # Keep store in sync with the current snapshot
     active_store = active_strategies
-    
-    #print(f"[DEBUG update_active_list_display] active_strategies={[(s.get('uid'), s.get('sid'), s.get('is_saved')) for s in active_strategies]}", file=sys.stdout)
-
 
     return container_children, count_badge, active_store, new_values
+
 
 
 
@@ -2003,12 +2036,7 @@ def move_to_active_from_universe(
             strategy_meta["file_path"] = internal_path
             strategy_meta["is_active"] = True
             strategy_meta["is_selected"] = False
-            
-            # don't overwrite existing stored entry accidentally - avoid duplicates when adding strategies check
-            # if internal_path in p1_strategy_store or uid in p1_strategy_store:
-            #     # already present in memory; skip (or update flags carefully)
-            #     continue
-            
+                       
             p1_strategy_store[internal_path] = strategy_meta
             p1_strategy_store[uid] = strategy_meta
         except (FileNotFoundError, PermissionError, pd.errors.EmptyDataError, pd.errors.ParserError):

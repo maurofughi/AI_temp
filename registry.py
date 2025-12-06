@@ -329,6 +329,9 @@ def add_or_update_strategy(strategy: Dict[str, Any]) -> None:
     # Work on a shallow copy and remove non-serializable fields
     strategy = dict(strategy)
     strategy.pop("df", None)  # df only lives in memory, not in JSON
+    # UI state flags must NOT be persisted to disk
+    strategy.pop("is_active", None)
+    strategy.pop("is_selected", None)
 
     # Derive uid from file_path if not provided
     if "uid" not in strategy and "file_path" in strategy:

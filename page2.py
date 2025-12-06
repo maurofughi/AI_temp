@@ -42,10 +42,6 @@ def build_phase2_right_panel():
                             dcc.Tab(
                                 label="Portfolio Analytics",
                                 value="p2-analytics",
-                                children=html.Div(
-                                    "Phase 2 – Portfolio Analytics (placeholder)",
-                                    style={"padding": "1rem", "fontSize": "0.9rem"},
-                                ),
                                 style={
                                     "backgroundColor": "#333333",
                                     "color": "#BBBBBB",
@@ -56,7 +52,202 @@ def build_phase2_right_panel():
                                     "color": "#FFFFFF",
                                     "padding": "8px 12px",
                                 },
+                                children=html.Div(
+                                    [
+                                        # ------- Top controls + metrics ---------------------------------
+                                        dbc.Row(
+                                            [
+                                                # Left: Initial equity input
+                                                dbc.Col(
+                                                    html.Div(
+                                                        [
+                                                            html.Span(
+                                                                "Initial equity:",
+                                                                style={
+                                                                    "marginRight": "0.5rem",
+                                                                    "fontSize": "0.85rem",
+                                                                },
+                                                            ),
+                                                            dcc.Input(
+                                                                id="p2-initial-equity-input",
+                                                                type="number",
+                                                                value=100000,
+                                                                min=0,
+                                                                step=10000,
+                                                                style={
+                                                                    "width": "140px",
+                                                                    "fontSize": "0.85rem",
+                                                                    "backgroundColor": "#2a2a2a",
+                                                                    "color": "#EEEEEE",
+                                                                    "border": "1px solid #555555",
+                                                                },
+                                                            ),
+                                                        ],
+                                                        style={
+                                                            "display": "flex",
+                                                            "alignItems": "center",
+                                                            "gap": "0.5rem",
+                                                        },
+                                                    ),
+                                                    md=5,
+                                                ),
+                                                # Right: Weighting mode selector
+                                                dbc.Col(
+                                                    html.Div(
+                                                        [
+                                                            html.Span(
+                                                                "Weighting mode:",
+                                                                style={
+                                                                    "marginRight": "0.5rem",
+                                                                    "fontSize": "0.85rem",
+                                                                },
+                                                            ),
+                                                            dbc.RadioItems(
+                                                                id="p2-weight-mode",
+                                                                options=[
+                                                                    {
+                                                                        "label": "Equal (1/N)",
+                                                                        "value": "equal",
+                                                                    },
+                                                                    {
+                                                                        "label": "Factors (normalised)",
+                                                                        "value": "factors",
+                                                                    },
+                                                                    {
+                                                                        "label": "Integer lots",
+                                                                        "value": "lots",
+                                                                    },
+                                                                ],
+                                                                value="factors",
+                                                                inline=True,
+                                                                className="btn-group",
+                                                                inputClassName="btn-check",
+                                                                labelClassName="btn btn-sm btn-outline-info",
+                                                                labelCheckedClassName="btn btn-sm btn-info active",
+                                                            ),
+                                                        ],
+                                                        style={
+                                                            "display": "flex",
+                                                            "alignItems": "center",
+                                                            "justifyContent": "flex-end",
+                                                            "gap": "0.75rem",
+                                                        },
+                                                    ),
+                                                    md=7,
+                                                ),
+                                            ],
+                                            className="mb-2",
+                                        ),
+                                        # Metrics table / summary for portfolio
+                                        html.Div(
+                                            id="p2-portfolio-metrics",
+                                            style={
+                                                "fontSize": "0.85rem",
+                                                "marginBottom": "0.75rem",
+                                            },
+                                        ),
+                                        html.Hr(style={"marginTop": "0.25rem", "marginBottom": "0.75rem"}),
+                            
+                                        # ------- Middle: Equity & Drawdown charts -----------------------
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    dcc.Graph(
+                                                        id="p2-equity-graph",
+                                                        figure={
+                                                            "data": [],
+                                                            "layout": {
+                                                                "template": "plotly_dark",
+                                                                "paper_bgcolor": "#222222",
+                                                                "plot_bgcolor": "#222222",
+                                                                "font": {"color": "#EEEEEE"},
+                                                            },
+                                                        },
+                                                        style={"height": "300px"},
+                                                    ),
+                                                    md=6,
+                                                ),
+                                                dbc.Col(
+                                                    dcc.Graph(
+                                                        id="p2-dd-graph",
+                                                        figure={
+                                                            "data": [],
+                                                            "layout": {
+                                                                "template": "plotly_dark",
+                                                                "paper_bgcolor": "#222222",
+                                                                "plot_bgcolor": "#222222",
+                                                                "font": {"color": "#EEEEEE"},
+                                                            },
+                                                        },
+                                                        style={
+                                                            "height": "300px",
+                                                        },
+                                                    ),
+                                                    md=6,
+                                                ),
+                                            ],
+                                            className="mb-3",
+                                        ),
+                            
+                                        # ------- Bottom: Histogram + DOW exposure -----------------------
+                                        dbc.Row(
+                                            [
+                                                # Left: P&L histogram + distribution metrics
+                                                dbc.Col(
+                                                    html.Div(
+                                                        [
+                                                            html.Div(
+                                                                id="p2-dist-metrics",
+                                                                style={
+                                                                    "fontSize": "0.8rem",
+                                                                    "marginBottom": "0.4rem",
+                                                                },
+                                                            ),
+                                                            dcc.Graph(
+                                                                id="p2-pnl-histogram",
+                                                                figure={
+                                                                    "data": [],
+                                                                    "layout": {
+                                                                        "template": "plotly_dark",
+                                                                        "paper_bgcolor": "#222222",
+                                                                        "plot_bgcolor": "#222222",
+                                                                        "font": {"color": "#EEEEEE"},
+                                                                    },
+                                                                },
+                                                                style={"height": "260px"},
+                                                            ),
+                                                        ]
+                                                    ),
+                                                    md=6,
+                                                ),
+                                                # Right: Day-of-week exposure chart
+                                                dbc.Col(
+                                                    dcc.Graph(
+                                                        id="p2-dow-bar-graph",
+                                                        figure={
+                                                            "data": [],
+                                                            "layout": {
+                                                                "template": "plotly_dark",
+                                                                "paper_bgcolor": "#222222",
+                                                                "plot_bgcolor": "#222222",
+                                                                "font": {"color": "#EEEEEE"},
+                                                            },
+                                                        },
+                                                        style={"height": "260px"},
+                                                    ),
+                                                    md=6,
+                                                ),
+                                            ],
+                                            className="mb-2",
+                                        ),
+                                    ],
+                                    style={
+                                        "padding": "0.75rem",
+                                        "fontSize": "0.85rem",
+                                    },
+                                ),
                             ),
+
                             dcc.Tab(
                                 label="Allocation Scenarios",
                                 value="p2-scenarios",

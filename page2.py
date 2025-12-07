@@ -149,8 +149,23 @@ def build_phase2_right_panel():
                                             },
                                         ),
                                         html.Hr(style={"marginTop": "0.25rem", "marginBottom": "0.75rem"}),
-                            
+                                        
+                                        html.Hr(style={"marginTop": "0.25rem", "marginBottom": "0.75rem"}),
+
+                                        # Toggle for strategy overlays on equity chart
+                                        html.Div(
+                                            dbc.Checkbox(
+                                                id="p2-show-strategy-equity",
+                                                value=False,
+                                                label="Overlay individual strategy equity curves",
+                                                label_style={"fontSize": "0.8rem"},
+                                            ),
+                                            style={"marginBottom": "0.35rem"},
+                                        ),
+                                                                   
                                         # ------- Middle: Equity & Drawdown charts (stacked full-width) --
+                                        
+                                        
                                         dbc.Row(
                                             [
                                                 dbc.Col(
@@ -497,7 +512,6 @@ def _build_portfolio_timeseries(
     }
 
 
-
 # ---------------------------------------------------------------------------
 # Phase 2 – Portfolio Analytics callback
 # ---------------------------------------------------------------------------
@@ -514,23 +528,48 @@ def _build_portfolio_timeseries(
     Input("p2-weights-store", "data"),
     Input("p2-weight-mode", "value"),
     Input("p2-initial-equity-input", "value"),
+    Input("p2-show-strategy-equity", "value"),
 )
 def update_portfolio_analytics(
     active_store,
     weights_store,
     weight_mode,
     initial_equity,
+    show_strategy_equity,
 ):
-    # Compute portfolio series
-    series = _build_portfolio_timeseries(
+    """
+    Build portfolio-level metrics & charts.
+
+    - Metrics and primary lines use the selected weight_mode.
+    - Secondary (overlay) lines for equity/DD are always built with 'lots'
+      when main is 'factors'/'equal', and with 'factors' when main is 'lots'.
+    """
+    # ------------------------------------------------------------------
+    # Decide main vs overlay weighting modes
+    # ------------------------------------------------------------------
+    main_mode = (weight_mode or "factors").lower()
+    if main_mode not in ("factors", "equal", "lots"):
+        main_mode = "factors"
+
+    # Overlay mode: use the "other" view so we can compare
+    if main_mode == "lots":
+        overlay_mode = "factors"
+    else:
+        overlay_mode = "lots"
+
+    base_initial_equity = float(initial_equity or 100000.0)
+
+    # ------------------------------------------------------------------
+    # Build main series (for metrics and primary lines)
+    # ------------------------------------------------------------------
+    series_main = _build_portfolio_timeseries(
         active_store=active_store,
         weights_store=weights_store,
-        weight_mode=weight_mode or "factors",
-        initial_equity=initial_equity or 100000.0,
+        weight_mode=main_mode,
+        initial_equity=base_initial_equity,
     )
 
-    if series is None:
-        # No data – return empty-ish figures but keep layout
+    if series_main is None:
         empty_fig = {
             "data": [],
             "layout": {
@@ -546,16 +585,35 @@ def update_portfolio_analytics(
         )
         return msg, empty_fig, empty_fig, msg, empty_fig, empty_fig
 
-    dates = series["dates"]
-    portfolio_daily = series["portfolio_daily"]
-    equity = series["equity"]
-    dd = series["dd"]
-    dd_pct = series["dd_pct"]
-    weights = series["weights"]
-    initial_equity = series["initial_equity"]
+    weights = series_main.get("weights", {})
+    # Try to build overlay series; if anything goes wrong, just skip overlay
+    try:
+        series_overlay = _build_portfolio_timeseries(
+            active_store=active_store,
+            weights_store=weights_store,
+            weight_mode=overlay_mode,
+            initial_equity=base_initial_equity,
+        )
+    except Exception:
+        series_overlay = None
+
+    # Unpack main series
+    dates = series_main["dates"]
+    portfolio_daily = series_main["portfolio_daily"]
+    equity_main = series_main["equity"]
+    dd_main = series_main["dd"]
+    dd_pct = series_main["dd_pct"]
+    initial_equity_main = series_main["initial_equity"]
+
+    # Unpack overlay series if available
+    equity_overlay = None
+    dd_overlay = None
+    if series_overlay is not None:
+        equity_overlay = series_overlay.get("equity")
+        dd_overlay = series_overlay.get("dd")
 
     # ------------------------------------------------------------------
-    # Metrics summary
+    # Metrics summary (based on main_mode)
     # ------------------------------------------------------------------
     n_days = len(portfolio_daily)
     if n_days == 0:
@@ -564,13 +622,15 @@ def update_portfolio_analytics(
         avg_daily_pnl = avg_monthly_pnl = 0.0
         worst_ls, avg_ls = 0, 0.0
         top5_pct = float("nan")
+        gini = float("nan")
+        hhi = float("nan")
     else:
-        total_pnl = float(equity.iloc[-1] - initial_equity)
-        max_dd_abs = float(dd.max())
+        total_pnl = float(equity_main.iloc[-1] - initial_equity_main)
+        max_dd_abs = float(dd_main.max())
         max_dd_pct = float((dd_pct.max() or 0.0) * 100.0)
 
         # Daily return based on initial equity, same as Phase 1 logic
-        daily_ret = portfolio_daily / initial_equity
+        daily_ret = portfolio_daily / initial_equity_main
         mu = daily_ret.mean()
         sigma = daily_ret.std(ddof=1)
         sharpe_ann = float(mu / sigma * np.sqrt(252.0)) if sigma > 0 else 0.0
@@ -581,7 +641,7 @@ def update_portfolio_analytics(
         else:
             years = max(n_days / 252.0, 1e-6)
 
-        cagr = float((equity.iloc[-1] / initial_equity) ** (1.0 / years) - 1.0)
+        cagr = float((equity_main.iloc[-1] / initial_equity_main) ** (1.0 / years) - 1.0)
         mar = float(cagr / (abs(max_dd_pct) / 100.0)) if max_dd_pct > 0 else 0.0
 
         win_rate = float((portfolio_daily > 0).mean() * 100.0)
@@ -599,7 +659,7 @@ def update_portfolio_analytics(
             top5_pct = float(top5_sum / total_pnl * 100.0)
         else:
             top5_pct = float("nan")
-            
+
         # Gini & HHI of positive-day contributions (wins only)
         pos = portfolio_daily[portfolio_daily > 0]
         if len(pos) >= 2 and pos.sum() > 0:
@@ -655,50 +715,174 @@ def update_portfolio_analytics(
         },
     )
 
+    # ------------------------------------------------------------------
+    # Equity and DD figures (main + overlay)
+    # ------------------------------------------------------------------
+    # Label helpers
+    def _mode_label(mode: str) -> str:
+        if mode == "lots":
+            return "Integer lots"
+        if mode == "equal":
+            return "Equal weights (1/N)"
+        return "Factors"
 
-    # ------------------------------------------------------------------
-    # Equity and DD figures
-    # ------------------------------------------------------------------
     equity_fig = go.Figure()
+
+    # Primary line (based on main_mode)
     equity_fig.add_trace(
         go.Scatter(
             x=dates,
-            y=equity,
+            y=equity_main,
             mode="lines",
-            name="Portfolio equity",
+            name=f"Portfolio equity – {_mode_label(main_mode)}",
         )
     )
+
+    # Overlay line if available (based on overlay_mode)
+    if equity_overlay is not None:
+        try:
+            # Assume same date index; if not, Plotly will still draw them
+            equity_fig.add_trace(
+                go.Scatter(
+                    x=series_overlay["dates"],
+                    y=equity_overlay,
+                    mode="lines",
+                    name=f"Portfolio equity – {_mode_label(overlay_mode)}",
+                    line={"dash": "dot"},
+                )
+            )
+        except Exception:
+            pass
+
     equity_fig.update_layout(
         template="plotly_dark",
         paper_bgcolor="#222222",
         plot_bgcolor="#222222",
         font={"color": "#EEEEEE"},
-        margin=dict(l=40, r=10, t=25, b=40),
+        margin=dict(l=40, r=10, t=35, b=40),
         xaxis_title="Date",
         yaxis_title="Equity",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1.0,
+        ),
     )
+    
+    # --------------------------------------------------------------
+    # Optional: overlay individual strategy equity curves
+    # --------------------------------------------------------------
+    show_strategy_equity = bool(show_strategy_equity)
+    
+    if show_strategy_equity and active_store:
+        # weights: mapping uid -> factor/lot already used in portfolio series
+        weights = weights or {}
+        active_store = active_store or []
+    
+        for row in active_store:
+            # Only overlay strategies that are currently selected in Phase 1
+            if not row.get("is_selected", False):
+                continue
+    
+            uid = row.get("uid")
+            sid = row.get("sid")
+            name = row.get("name", uid or "?")
+    
+            # Look up strategy meta from shared in-memory store
+            meta = p1_strategy_store.get(sid) or p1_strategy_store.get(uid)
+            if not meta:
+                continue
+    
+            daily_pnl = meta.get("daily_pnl")
+            if daily_pnl is None or len(daily_pnl) == 0:
+                continue
+    
+            # Align to portfolio date index
+            strat_daily = (
+                daily_pnl.reindex(dates).fillna(0.0)
+                if isinstance(daily_pnl, pd.Series)
+                else None
+            )
+            if strat_daily is None:
+                continue
+    
+            # Scale by the same weight we used for the portfolio
+            w = float(weights.get(uid, 0.0))
+            if w == 0.0:
+                # If no explicit weight, skip – this avoids phantom lines
+                continue
+    
+            strat_scaled = strat_daily * w
+            strat_equity = initial_equity + strat_scaled.cumsum()
+    
+            # Use any colour already assigned in the sidebar / weights panel
+            color = meta.get("color")
+            line_kwargs = {"width": 1, "dash": "dot", "shape": "hv"}
+            if color:
+                line_kwargs["color"] = color
+    
+            equity_fig.add_trace(
+                go.Scatter(
+                    x=dates,
+                    y=strat_equity,
+                    mode="lines",
+                    name=f"{name} (strategy)",
+                    opacity=0.45,
+                    legendgroup="strategies",
+                    showlegend=True,
+                    line=line_kwargs,
+                )
+            )
+
+
 
     dd_fig = go.Figure()
+
     dd_fig.add_trace(
         go.Scatter(
             x=dates,
-            y=-dd,  # plot as negative for visual convention
+            y=-dd_main,  # plot as negative for visual convention
             mode="lines",
-            name="Drawdown",
+            name=f"Drawdown – {_mode_label(main_mode)}",
         )
     )
+
+    if dd_overlay is not None:
+        try:
+            dd_fig.add_trace(
+                go.Scatter(
+                    x=series_overlay["dates"],
+                    y=-dd_overlay,
+                    mode="lines",
+                    name=f"Drawdown – {_mode_label(overlay_mode)}",
+                    line={"dash": "dot"},
+                )
+            )
+        except Exception:
+            pass
+
     dd_fig.update_layout(
         template="plotly_dark",
         paper_bgcolor="#222222",
         plot_bgcolor="#222222",
         font={"color": "#EEEEEE"},
-        margin=dict(l=40, r=10, t=25, b=40),
+        margin=dict(l=40, r=10, t=35, b=40),
         xaxis_title="Date",
         yaxis_title="Drawdown",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1.0,
+        ),
     )
 
+
     # ------------------------------------------------------------------
-    # Distribution metrics + histogram
+    # Distribution metrics + histogram (based on main series)
     # ------------------------------------------------------------------
     skew = float(portfolio_daily.skew()) if n_days > 1 else 0.0
     kurt = float(portfolio_daily.kurtosis()) if n_days > 1 else 0.0
@@ -712,20 +896,14 @@ def update_portfolio_analytics(
     else:
         tail_ratio = np.nan
 
-    # # % P&L from top 5 days
-    # if n_days >= 5 and total_pnl != 0:
-    #     q = int(max(1, np.floor(n_days * 0.05)))
-    #     top5_sum = float(portfolio_daily.nlargest(q).sum())
-    #     top5_pct = float(top5_sum / total_pnl * 100.0)        
-    # else:
-    #     top5_pct = np.nan
-
     dist_metrics = html.Div(
         [
             html.Span(f"Skewness: {skew:,.2f}", style={"marginRight": "1rem"}),
             html.Span(f"Kurtosis: {kurt:,.2f}", style={"marginRight": "1rem"}),
             html.Span(
-                "Tail ratio: N/A" if np.isnan(tail_ratio) else f"Tail ratio: {tail_ratio:,.2f}",
+                "Tail ratio: N/A"
+                if np.isnan(tail_ratio)
+                else f"Tail ratio: {tail_ratio:,.2f}",
                 style={"marginRight": "1rem"},
             ),
             html.Span(
@@ -757,7 +935,7 @@ def update_portfolio_analytics(
     )
 
     # ------------------------------------------------------------------
-    # Day-of-week exposure bar
+    # Day-of-week exposure bar (based on main series)
     # ------------------------------------------------------------------
     dow_map = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
     dow = portfolio_daily.copy()
@@ -787,7 +965,6 @@ def update_portfolio_analytics(
     )
 
     return metrics_bar, equity_fig, dd_fig, dist_metrics, hist_fig, dow_fig
-
 
 
 

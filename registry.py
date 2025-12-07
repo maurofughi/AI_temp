@@ -414,43 +414,6 @@ def clear_registry(confirm: bool = False) -> None:
         raise RuntimeError("Refusing to clear registry without confirm=True.")
     save_registry(_default_registry())
 
-def set_phase1_active_flags(active_ids: List[str]) -> None:
-    """
-    Update the `phase1_active` flag for all strategies
-    based on the list of active strategy IDs (legacy id or uid).
-    """
-    active_set = set(active_ids or [])
-
-    registry = load_registry()
-    strategies = registry.get("strategies", [])
-
-    for s in strategies:
-        # Check both uid and id for backward compatibility
-        sid = s.get("id")
-        uid = s.get("uid")
-        s["phase1_active"] = (sid in active_set) or (uid in active_set)
-
-    registry["strategies"] = strategies
-    save_registry(registry)
-
-
-def set_phase1_active_flags_by_uid(active_uids: List[str]) -> None:
-    """
-    Update the `phase1_active` flag for all strategies
-    based on the list of active strategy UIDs.
-    """
-    active_set = set(active_uids or [])
-
-    registry = load_registry()
-    strategies = registry.get("strategies", [])
-
-    for s in strategies:
-        uid = s.get("uid")
-        s["phase1_active"] = uid in active_set
-
-    registry["strategies"] = strategies
-    save_registry(registry)
-
 
 def mark_strategies_as_saved(uids: List[str], source_paths: Optional[Dict[str, str]] = None) -> Tuple[List[str], List[str]]:
     """

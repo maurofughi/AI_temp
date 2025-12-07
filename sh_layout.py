@@ -20,7 +20,6 @@ from core.registry import (
     load_registry,
     add_or_update_strategy,
     list_strategies,
-    set_phase1_active_flags,
     list_portfolios,
     get_portfolio,
     add_or_update_portfolio,
@@ -766,29 +765,6 @@ def toggle_data_panel(n_clicks, is_open):
         return is_open
     return not is_open
 
-
-@callback(
-    Output("p1-strategy-registry-sync", "data"),
-    Input("p1-strategy-checklist", "value"),
-)
-def sync_registry_phase1_active(selected_ids):
-    """
-    Update `phase1_active` flags in the JSON registry based on the current
-    checklist selection. Returns a small summary payload just to satisfy Dash.
-    """
-    selected_ids = selected_ids or []
-
-    # Update JSON registry
-    set_phase1_active_flags(selected_ids)
-
-    # Read back for a quick summary
-    registry = load_registry()
-    n_total = len(registry.get("strategies", []))
-
-    return {
-        "n_selected": len(selected_ids),
-        "n_total": n_total,
-    }
 
 @callback(
     Output("p1-portfolio-save-status", "children"),
@@ -1725,38 +1701,37 @@ def _build_universe_row(uid: str, name: str, is_multi_selected: bool, is_active:
     Output("p1-active-list-container", "children"),
     Output("p1-active-count-badge", "children"),
     Output("p1-active-list-store", "data"),
-    Output("p1-strategy-checklist", "value", allow_duplicate=True),
     Input("p1-strategy-checklist", "options"),
     Input("p1-strategy-checklist", "value"),
-    Input({"type": "active-row-checkbox", "uid": ALL}, "value"),
-    #Input({"type": "active-row-remove", "uid": ALL}, "n_clicks"),
-    State("p1-active-list-store", "data"),
     State("p1-current-portfolio-id", "data"),
     prevent_initial_call=True,
 )
+
+
 def update_active_list_display(
     checklist_options,
     checklist_values,
-    checkbox_values,
-    # remove_clicks,
-    active_store,
     current_portfolio_id,
 ):
     """
     Render the Active List based on current strategy state.
 
-    Active List shows strategies present in p1-strategy-checklist.options.
-    - Checkbox toggles is_selected (and updates checklist values).
-    - Remove button is handled by remove_from_active_list;
-      this callback just reflects the current contents of options/value.
+    Source of truth for selection is p1-strategy-checklist.value.
+    
+    This callback:
+      - Builds row components for each active strategy with checkboxes
+      - Updates p1-active-list-store with current snapshot of active strategies
+      - Updates the active count badge
+    
+    Fires when either OPTIONS (strategies added/removed) or VALUES (selection) change.
+    The sync_active_checkboxes_to_checklist callback has guards to prevent circular dependencies.
+    
+    Returns:
+        tuple: (container_children, count_badge, active_store)
     """
-    triggered_id = ctx.triggered_id
-
     # Normalise inputs
-    active_store = active_store or []
     checklist_options = checklist_options or []
     checklist_values = checklist_values or []
-    checkbox_values = checkbox_values or []
 
     registry = load_registry()
 
@@ -1765,19 +1740,18 @@ def update_active_list_display(
     if current_portfolio_id and registry.get("portfolios"):
         for p in registry["portfolios"]:
             if p.get("id") == current_portfolio_id:
-                # Prefer strategy_uids; fall back to legacy strategy_ids
                 portfolio_uids = set(
                     p.get("strategy_uids", p.get("strategy_ids", []))
                 )
                 break
 
-    # --- Build base list of active strategies from options + current checklist values ---
+    # --- Build base list of active strategies from options + checklist values ---
     active_strategies = []
     for opt in checklist_options:
         sid = opt.get("value")
         label = opt.get("label", "")
 
-        # Default selection state from checklist values
+        # Selection state comes purely from checklist_values
         is_selected = sid in checklist_values
 
         # Strategy metadata
@@ -1807,25 +1781,6 @@ def update_active_list_display(
             }
         )
 
-    # Single source of truth for selection:
-    # - If a row checkbox was clicked, recompute selection from checkbox_values.
-    # - Otherwise, keep checklist_values as-is.
-    new_values = list(checklist_values)
-
-    if isinstance(triggered_id, dict) and triggered_id.get("type") == "active-row-checkbox":
-        new_values = []
-        for idx, s in enumerate(active_strategies):
-            # checkbox_values is aligned with rows by index
-            selected = False
-            if idx < len(checkbox_values) and checkbox_values[idx]:
-                selected = True
-            s["is_selected"] = selected
-            if selected:
-                new_values.append(s["sid"])
-
-        # Keep checklist_values in sync for subsequent renders
-        checklist_values = new_values
-
     # Build rows for display
     if not active_strategies:
         container_children = [
@@ -1852,7 +1807,64 @@ def update_active_list_display(
     # Keep store in sync with the current snapshot
     active_store = active_strategies
 
-    return container_children, count_badge, active_store, new_values
+    # Echo checklist_values unchanged – this callback does not modify selection
+    return container_children, count_badge, active_store
+
+
+@callback(
+    Output("p1-strategy-checklist", "value", allow_duplicate=True),
+    Input({"type": "active-row-checkbox", "uid": ALL}, "value"),
+    State("p1-strategy-checklist", "value"),
+    State("p1-active-list-store", "data"),
+    prevent_initial_call=True,
+)
+def sync_active_checkboxes_to_checklist(
+    checkbox_values,
+    checklist_values,
+    active_store,
+):
+    """
+    Keep p1-strategy-checklist.value in sync with the row checkboxes.
+
+    - We rebuild the selected SIDs from checkbox_values + active_store by index.
+    - If that rebuilt list is identical to the current checklist_values, we do
+      nothing (this covers programmatic changes like 'Deselect all').
+    - If it differs, we return the rebuilt list (this covers real user clicks).
+    """
+    # Guard: Only process if triggered by an actual checkbox click
+    triggered_id = ctx.triggered_id
+    if not triggered_id or not isinstance(triggered_id, dict):
+        return no_update
+    if triggered_id.get("type") != "active-row-checkbox":
+        return no_update
+    
+    # Normalise inputs
+    checkbox_values = checkbox_values or []
+    checklist_values = checklist_values or []
+    active_store = active_store or []
+
+    # Guard: Verify the number of checkboxes matches the active store
+    # Transitional state occurs when:
+    # - Display is being rebuilt with a different number of strategies
+    # - Checkboxes are being added/removed asynchronously
+    # In these cases, the index-based mapping is unreliable, so ignore the callback
+    if len(checkbox_values) != len(active_store):
+        return no_update
+
+    # Rebuild selection from checkbox_values
+    new_values = []
+    for idx, row in enumerate(active_store):
+        if idx < len(checkbox_values) and checkbox_values[idx]:
+            sid = row.get("sid")
+            if sid:
+                new_values.append(sid)
+
+    # If nothing changed vs current selection, do not update
+    # Use set comparison to detect actual changes regardless of order
+    if set(new_values) == set(checklist_values):
+        return no_update
+
+    return new_values
 
 
 @callback(

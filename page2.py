@@ -585,7 +585,6 @@ def update_portfolio_analytics(
         )
         return msg, empty_fig, empty_fig, msg, empty_fig, empty_fig
 
-    weights = series_main.get("weights", {})
     # Try to build overlay series; if anything goes wrong, just skip overlay
     try:
         series_overlay = _build_portfolio_timeseries(
@@ -598,12 +597,12 @@ def update_portfolio_analytics(
         series_overlay = None
 
     # Unpack main series
-    dates = series_main["dates"]
+    dates = series_main["dates"]                      # DatetimeIndex
     portfolio_daily = series_main["portfolio_daily"]
     equity_main = series_main["equity"]
     dd_main = series_main["dd"]
     dd_pct = series_main["dd_pct"]
-    initial_equity_main = series_main["initial_equity"]
+    initial_equity_main = float(series_main["initial_equity"])
 
     # Unpack overlay series if available
     equity_overlay = None
@@ -624,6 +623,7 @@ def update_portfolio_analytics(
         top5_pct = float("nan")
         gini = float("nan")
         hhi = float("nan")
+        pcr = float("nan")
     else:
         total_pnl = float(equity_main.iloc[-1] - initial_equity_main)
         max_dd_abs = float(dd_main.max())
@@ -680,6 +680,44 @@ def update_portfolio_analytics(
             gini = float("nan")
             hhi = float("nan")
 
+        # ------------------- Premium Capture Rate (PCR) --------------------
+        total_premium_abs = 0.0
+
+        if active_store:
+            for row in active_store:
+                sid = row.get("sid")
+                uid = row.get("uid")
+
+                meta = None
+                if sid and sid in p1_strategy_store:
+                    meta = p1_strategy_store[sid]
+                elif uid and uid in p1_strategy_store:
+                    meta = p1_strategy_store[uid]
+
+                if not meta:
+                    continue
+
+                df = meta.get("df")
+                if df is None or df.empty:
+                    continue
+
+                prem_col = None
+                for c in df.columns:
+                    cl = str(c).lower()
+                    if "premium" in cl or "prem" in cl:
+                        prem_col = c
+                        break
+
+                if prem_col is None:
+                    continue
+
+                total_premium_abs += float(df[prem_col].abs().sum())
+
+        if total_premium_abs > 0.0:
+            pcr = float(total_pnl / total_premium_abs)
+        else:
+            pcr = float("nan")
+
     metrics_bar = html.Div(
         [
             _metric_cell("Total P&L", f"${total_pnl:,.0f}"),
@@ -688,9 +726,13 @@ def update_portfolio_analytics(
             _metric_cell("CAGR", f"{cagr * 100:,.2f}%"),
             _metric_cell("MAR", f"{mar:,.2f}"),
             _metric_cell("Sharpe (ann.)", f"{sharpe_ann:,.2f}"),
-            _metric_cell("Win rate (days)", f"{win_rate:,.1f}%"),
+            _metric_cell(
+                "PCR (P&L / |prem|)",
+                "N/A" if np.isnan(pcr) else f"{pcr * 100:,.2f}%",
+            ),
             _metric_cell("Avg daily P&L", f"${avg_daily_pnl:,.0f}"),
             _metric_cell("Avg monthly P&L", f"${avg_monthly_pnl:,.0f}"),
+            _metric_cell("Win rate (days)", f"{win_rate:,.1f}%"),
             _metric_cell("Worst losing streak", f"{worst_ls} days"),
             _metric_cell(
                 "Avg losing streak (>=2)", f"{avg_ls:,.1f} days"
@@ -718,7 +760,6 @@ def update_portfolio_analytics(
     # ------------------------------------------------------------------
     # Equity and DD figures (main + overlay)
     # ------------------------------------------------------------------
-    # Label helpers
     def _mode_label(mode: str) -> str:
         if mode == "lots":
             return "Integer lots"
@@ -741,7 +782,6 @@ def update_portfolio_analytics(
     # Overlay line if available (based on overlay_mode)
     if equity_overlay is not None:
         try:
-            # Assume same date index; if not, Plotly will still draw them
             equity_fig.add_trace(
                 go.Scatter(
                     x=series_overlay["dates"],
@@ -770,80 +810,80 @@ def update_portfolio_analytics(
             x=1.0,
         ),
     )
-    
-    # --------------------------------------------------------------
-    # Optional: overlay individual strategy equity curves
-    # --------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Optional overlay: individual strategy equity curves
+    # ------------------------------------------------------------------
     show_strategy_equity = bool(show_strategy_equity)
-    
+
     if show_strategy_equity and active_store:
-        # weights: mapping uid -> factor/lot already used in portfolio series
-        weights = weights or {}
         active_store = active_store or []
-    
+
         for row in active_store:
-            # Only overlay strategies that are currently selected in Phase 1
-            if not row.get("is_selected", False):
-                continue
-    
-            uid = row.get("uid")
             sid = row.get("sid")
-            name = row.get("name", uid or "?")
-    
-            # Look up strategy meta from shared in-memory store
-            meta = p1_strategy_store.get(sid) or p1_strategy_store.get(uid)
+            uid = row.get("uid")
+            name = row.get("name") or uid or sid
+
+            meta = None
+            if sid and sid in p1_strategy_store:
+                meta = p1_strategy_store[sid]
+            elif uid and uid in p1_strategy_store:
+                meta = p1_strategy_store[uid]
+
             if not meta:
                 continue
-    
-            daily_pnl = meta.get("daily_pnl")
-            if daily_pnl is None or len(daily_pnl) == 0:
+
+            df = meta.get("df")
+            if df is None or df.empty:
                 continue
-    
-            # Align to portfolio date index
-            strat_daily = (
-                daily_pnl.reindex(dates).fillna(0.0)
-                if isinstance(daily_pnl, pd.Series)
-                else None
+
+            if "Date Closed" not in df.columns or "P/L" not in df.columns:
+                continue
+
+            tmp = df[["Date Closed", "P/L"]].copy()
+            # Normalise exactly as in _build_portfolio_timeseries
+            tmp["Date Closed"] = pd.to_datetime(tmp["Date Closed"]).dt.date
+
+            daily = (
+                tmp.groupby("Date Closed")["P/L"]
+                .sum()
+                .sort_index()
             )
-            if strat_daily is None:
+            if daily.empty:
                 continue
-    
-            # Scale by the same weight we used for the portfolio
-            w = float(weights.get(uid, 0.0))
-            if w == 0.0:
-                # If no explicit weight, skip – this avoids phantom lines
-                continue
-    
-            strat_scaled = strat_daily * w
-            strat_equity = initial_equity + strat_scaled.cumsum()
-    
-            # Use any colour already assigned in the sidebar / weights panel
+
+            daily.index = pd.to_datetime(daily.index)
+            daily = daily.reindex(dates, fill_value=0.0)
+
+            strat_equity = initial_equity_main + daily.cumsum()
+
+            line_kwargs = dict(width=1, dash="dot")
+            # If a color is stored in meta, reuse it for consistency with weights panel
             color = meta.get("color")
-            line_kwargs = {"width": 1, "dash": "dot", "shape": "hv"}
             if color:
                 line_kwargs["color"] = color
-    
+
             equity_fig.add_trace(
                 go.Scatter(
                     x=dates,
                     y=strat_equity,
                     mode="lines",
-                    name=f"{name} (strategy)",
-                    opacity=0.45,
-                    legendgroup="strategies",
-                    showlegend=True,
                     line=line_kwargs,
+                    opacity=0.5,
+                    name=f"{name} (1x)",
+                    showlegend=True,
                 )
             )
 
-
-
+    # ------------------------------------------------------------------
+    # Drawdown figure
+    # ------------------------------------------------------------------
     dd_fig = go.Figure()
 
     dd_fig.add_trace(
         go.Scatter(
             x=dates,
-            y=-dd_main,  # plot as negative for visual convention
+            y=-dd_main,
             mode="lines",
             name=f"Drawdown – {_mode_label(main_mode)}",
         )
@@ -880,14 +920,12 @@ def update_portfolio_analytics(
         ),
     )
 
-
     # ------------------------------------------------------------------
     # Distribution metrics + histogram (based on main series)
     # ------------------------------------------------------------------
     skew = float(portfolio_daily.skew()) if n_days > 1 else 0.0
     kurt = float(portfolio_daily.kurtosis()) if n_days > 1 else 0.0
 
-    # Tail ratio: mean of top 5% / abs(mean of bottom 5%)
     if n_days > 10:
         q = int(max(1, np.floor(n_days * 0.05)))
         top = portfolio_daily.nlargest(q).mean()
@@ -965,6 +1003,7 @@ def update_portfolio_analytics(
     )
 
     return metrics_bar, equity_fig, dd_fig, dist_metrics, hist_fig, dow_fig
+
 
 
 

@@ -18,11 +18,13 @@ from dash import html, dcc, callback, Input, Output, State, ctx, no_update
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import re
 
 from core.sh_layout import (
     build_data_input_section,
     build_strategy_sidebar,
     ROOT_DATA_DIR,
+    strategy_color_for_uid,
     _list_immediate_subfolders,
     p1_strategy_store,   # reuse in-memory strategy data (with df)
 )
@@ -685,6 +687,9 @@ def update_portfolio_analytics(
 
         if active_store:
             for row in active_store:
+                # Only selected strategies contribute to portfolio & PCR
+                if not row.get("is_selected", False):
+                    continue
                 sid = row.get("sid")
                 uid = row.get("uid")
 
@@ -756,6 +761,17 @@ def update_portfolio_analytics(
             "alignItems": "flex-start",
         },
     )
+    
+    def _clean_name(raw: str) -> str:
+        """
+        Remove noisy prefixes like 'FOLD.' / 'SINGLE.' and extra spaces
+        for display in legends / tooltips.
+        """
+        if not raw:
+            return ""
+        name = re.sub(r"^(FOLD\.|SINGLE\.)\s*", "", str(raw)).strip()
+        return name or str(raw)
+
 
     # ------------------------------------------------------------------
     # Equity and DD figures (main + overlay)
@@ -767,32 +783,44 @@ def update_portfolio_analytics(
             return "Equal weights (1/N)"
         return "Factors"
 
+   
     equity_fig = go.Figure()
 
     # Primary line (based on main_mode)
+    label_main = f"Portfolio equity – {_mode_label(main_mode)}"
     equity_fig.add_trace(
         go.Scatter(
             x=dates,
             y=equity_main,
             mode="lines",
-            name=f"Portfolio equity – {_mode_label(main_mode)}",
+            name=label_main,
+            hovertemplate=(
+            f"{label_main}<br>$%{{y:,.0f}}<br>%{{x|%d-%b-%y}}<extra></extra>"
+            ),
         )
     )
 
+
     # Overlay line if available (based on overlay_mode)
+    
     if equity_overlay is not None:
         try:
+            label_overlay = f"Portfolio equity – {_mode_label(overlay_mode)}"
             equity_fig.add_trace(
                 go.Scatter(
                     x=series_overlay["dates"],
                     y=equity_overlay,
                     mode="lines",
-                    name=f"Portfolio equity – {_mode_label(overlay_mode)}",
+                    name=label_overlay,
                     line={"dash": "dot"},
+                    hovertemplate=(
+                    f"{label_main}<br>$%{{y:,.0f}}<br>%{{x|%d-%b-%y}}<extra></extra>"
+                    ),
                 )
             )
         except Exception:
             pass
+
 
     equity_fig.update_layout(
         template="plotly_dark",
@@ -820,6 +848,9 @@ def update_portfolio_analytics(
         active_store = active_store or []
 
         for row in active_store:
+            # Only overlay selected strategies
+            if not row.get("is_selected", False):
+                continue
             sid = row.get("sid")
             uid = row.get("uid")
             name = row.get("name") or uid or sid
@@ -856,24 +887,30 @@ def update_portfolio_analytics(
             daily = daily.reindex(dates, fill_value=0.0)
 
             strat_equity = initial_equity_main + daily.cumsum()
-
-            line_kwargs = dict(width=1, dash="dot")
-            # If a color is stored in meta, reuse it for consistency with weights panel
-            color = meta.get("color")
-            if color:
-                line_kwargs["color"] = color
+            
+            clean_name = _clean_name(name)
+            display_name = f"{clean_name} (1x)"
 
             equity_fig.add_trace(
                 go.Scatter(
                     x=dates,
                     y=strat_equity,
                     mode="lines",
-                    line=line_kwargs,
+                    line=dict(
+                        width=1,
+                        dash="dot",
+                        color=strategy_color_for_uid(uid),
+                    ),
                     opacity=0.5,
-                    name=f"{name} (1x)",
+                    name=display_name,
                     showlegend=True,
+                    hovertemplate=(
+                        f"{clean_name}<br>$%{{y:,.0f}}<br>%{{x|%d-%b-%y}}"
+                        "<extra></extra>"
+                    ),
                 )
             )
+
 
     # ------------------------------------------------------------------
     # Drawdown figure

@@ -29,6 +29,8 @@ from core.sh_layout import (
     p1_strategy_store,   # reuse in-memory strategy data (with df)
 )
 from core.registry import list_portfolios
+from pages.page1 import VIX_SLIDER_MIN, VIX_SLIDER_MAX, VIX_MARKS
+
 
 
 def build_phase2_right_panel():
@@ -574,29 +576,29 @@ def build_phase2_right_panel():
                                                                     ),
                                                                     dcc.Slider(
                                                                         id="p2-corr5-vix-slider-1",
-                                                                        min=10,
-                                                                        max=45,
+                                                                        min=VIX_SLIDER_MIN,
+                                                                        max=VIX_SLIDER_MAX,
                                                                         step=1,
                                                                         value=15,
-                                                                        marks=None,
+                                                                        marks=VIX_MARKS,
                                                                         tooltip={"always_visible": False},
                                                                     ),
                                                                     dcc.Slider(
                                                                         id="p2-corr5-vix-slider-2",
-                                                                        min=10,
-                                                                        max=45,
+                                                                        min=VIX_SLIDER_MIN,
+                                                                        max=VIX_SLIDER_MAX,
                                                                         step=1,
                                                                         value=20,
-                                                                        marks=None,
+                                                                        marks=VIX_MARKS,
                                                                         tooltip={"always_visible": False},
                                                                     ),
                                                                     dcc.Slider(
                                                                         id="p2-corr5-vix-slider-3",
-                                                                        min=10,
-                                                                        max=45,
+                                                                        min=VIX_SLIDER_MIN,
+                                                                        max=VIX_SLIDER_MAX,
                                                                         step=1,
                                                                         value=30,
-                                                                        marks=None,
+                                                                        marks=VIX_MARKS,
                                                                         tooltip={"always_visible": False},
                                                                     ),
                                                                 ],
@@ -1726,24 +1728,28 @@ def _corr_alt_table_component(
 # ---------------------------------------------------------------------------
 # Phase 2 – CORR5 helper: strategy vs portfolio by VIX regime
 # ---------------------------------------------------------------------------
-
 def _build_corr5_vix_matrix(
     active_store: list,
     weights_store: dict | None,
     initial_equity: float,
+    vix_mode: str = "auto",
+    manual_bounds: list[float] | None = None,
 ) -> dict | None:
     """
-    Build CORR5 matrix: for each strategy and each VIX regime bucket,
-    compute the Pearson correlation between strategy daily P&L and the
-    portfolio daily P&L restricted to that regime.
+    Build CORR5 matrix: for each strategy and each VIX regime bucket, compute
+    the Pearson correlation between strategy daily P&L and the portfolio daily
+    P&L restricted to that regime.
 
-    Regimes are defined as quartiles of daily entry-based Opening VIX.
+    Regimes:
+      - AUTO  : quartiles of daily entry-based Opening VIX.
+      - MANUAL: user-specified three cut levels (low → high) from sliders.
+
     Returns dict with:
-      - uids: list of strategy UIDs
-      - labels_full: full strategy names (same order as uids)
-      - labels_axis: y-axis labels (truncated or S1..Sn)
+      - uids         : list of strategy UIDs
+      - labels_full  : full strategy names (same order as uids)
+      - labels_axis  : y-axis labels (truncated or S1..Sn)
       - bucket_labels: list of x-axis labels for VIX regimes
-      - corr: DataFrame shape (n_strats, 4) with correlations
+      - corr         : DataFrame shape (n_strats, 4) with correlations
     """
     # Build daily P&L matrix and portfolio series
     series = _build_portfolio_timeseries(
@@ -1778,15 +1784,18 @@ def _build_corr5_vix_matrix(
     ordered_uids = [uid for uid in pnl_df.columns if uid in uid_to_name]
     if len(ordered_uids) < 1:
         return None
-    pnl_df = pnl_df[ordered_uids]
 
+    pnl_df = pnl_df[ordered_uids]
     labels_full = [uid_to_name[uid] for uid in ordered_uids]
+
+    # Short names (for <=10 strategies)
     labels_short: list[str] = []
     for name in labels_full:
         if len(name) > 15:
             labels_short.append(name[:15] + "…")
         else:
             labels_short.append(name)
+
     codes = [f"S{i+1}" for i in range(len(ordered_uids))]
 
     # Decide y-axis labels consistent with CORR1–CORR4
@@ -1799,7 +1808,6 @@ def _build_corr5_vix_matrix(
     # Build daily Opening VIX per date (entry-based) from strategy CSVs
     # ------------------------------------------------------------------
     date_to_vix: dict[object, list[float]] = {}
-
     for row in active_store:
         if not row.get("is_selected", False):
             continue
@@ -1845,23 +1853,64 @@ def _build_corr5_vix_matrix(
     if vix_series.empty:
         return None
 
-    # Define VIX regimes using quartiles
-    q = vix_series.quantile([0.25, 0.5, 0.75])
-    q1, q2, q3 = float(q.iloc[0]), float(q.iloc[1]), float(q.iloc[2])
-
+    # ------------------------------------------------------------------
+    # Define VIX regimes: AUTO (quartiles) or MANUAL (slider bounds)
+    # ------------------------------------------------------------------
     def _bucket(v: float) -> int:
-        if v <= q1:
+        if v <= b1:
             return 0
-        elif v <= q2:
+        elif v <= b2:
             return 1
-        elif v <= q3:
+        elif v <= b3:
             return 2
         else:
             return 3
+        
+    vix_mode = (vix_mode or "auto").lower()
+    
+    use_manual = False
+    b1 = b2 = b3 = None
+    if vix_mode == "manual" and manual_bounds and len(manual_bounds) == 3:
+        try:
+            bounds_sorted = sorted(float(x) for x in manual_bounds)
+            b1, b2, b3 = bounds_sorted
+            use_manual = True
+        except Exception:
+            use_manual = False
+
+    if use_manual:
+        # MANUAL: user-defined boundaries
+        bucket_labels = [
+            f"R1\nVIX ≤ {b1:.1f}",
+            f"R2\n{b1:.1f}–{b2:.1f}",
+            f"R3\n{b2:.1f}–{b3:.1f}",
+            f"R4\nVIX ≥ {b3:.1f}",
+        ]
+    else:
+        # AUTO: quartiles
+        q = vix_series.quantile([0.25, 0.5, 0.75])
+        q1, q2, q3 = float(q.iloc[0]), float(q.iloc[1]), float(q.iloc[2])
+
+        def _bucket(v: float) -> int:
+            if v <= q1:
+                return 0
+            elif v <= q2:
+                return 1
+            elif v <= q3:
+                return 2
+            else:
+                return 3
+
+        bucket_labels = [
+            f"Q1\nVIX ≤ {q1:.1f}",
+            f"Q2\n{q1:.1f}–{q2:.1f}",
+            f"Q3\n{q2:.1f}–{q3:.1f}",
+            f"Q4\nVIX ≥ {q3:.1f}",
+        ]
 
     bucket_series = vix_series.apply(_bucket)
-
     buckets = [0, 1, 2, 3]
+
     data = np.full((len(ordered_uids), len(buckets)), np.nan, dtype=float)
 
     # Compute correlation within each regime bucket
@@ -1870,7 +1919,6 @@ def _build_corr5_vix_matrix(
         if int(mask.sum()) < 5:
             continue
 
-        # Align to pnl_df / portfolio index
         idx_b = mask.index[mask]
         port_b = portfolio_daily.reindex(idx_b).astype(float)
         pnl_b = pnl_df.reindex(idx_b)
@@ -1884,9 +1932,7 @@ def _build_corr5_vix_matrix(
                 corr_val = np.nan
             else:
                 try:
-                    corr_val = float(
-                        np.corrcoef(s.values, port_b.values)[0, 1]
-                    )
+                    corr_val = float(np.corrcoef(s.values, port_b.values)[0, 1])
                 except Exception:
                     corr_val = np.nan
             data[i, b_idx] = corr_val
@@ -1897,13 +1943,6 @@ def _build_corr5_vix_matrix(
         columns=buckets,
     )
 
-    bucket_labels = [
-        f"Q1\nVIX ≤ {q1:.1f}",
-        f"Q2\n{q1:.1f}–{q2:.1f}",
-        f"Q3\n{q2:.1f}–{q3:.1f}",
-        f"Q4\nVIX ≥ {q3:.1f}",
-    ]
-
     return {
         "uids": ordered_uids,
         "labels_full": labels_full,
@@ -1911,6 +1950,7 @@ def _build_corr5_vix_matrix(
         "bucket_labels": bucket_labels,
         "corr": corr,
     }
+
 
 
 def _corr5_vix_heatmap_figure(info: dict | None) -> go.Figure:
@@ -2109,86 +2149,67 @@ def update_portfolio_correlation(
 # ---------------------------------------------------------------------------
 # Phase 2 – CORR5 callback (strategy vs portfolio by VIX regime)
 # ---------------------------------------------------------------------------
-
 @callback(
     Output("p2-corr5-vix-heatmap", "figure"),
     Input("p1-active-list-store", "data"),
     Input("p2-weights-store", "data"),
     Input("p2-initial-equity-input", "value"),
+    Input("p2-corr5-vix-mode-auto", "n_clicks"),
+    Input("p2-corr5-vix-mode-manual", "n_clicks"),
+    Input("p2-corr5-vix-slider-1", "value"),
+    Input("p2-corr5-vix-slider-2", "value"),
+    Input("p2-corr5-vix-slider-3", "value"),
 )
 def update_corr5_vix_regime(
     active_store,
     weights_store,
     initial_equity,
+    n_auto,
+    n_manual,
+    v1,
+    v2,
+    v3,
 ):
     """
-    Update CORR5 heatmap: correlation of each strategy vs portfolio
-    by Opening VIX regime (quartiles).
+    Update CORR5 heatmap: correlation of each strategy vs portfolio by Opening
+    VIX regime.
+
+    - AUTO   : regimes based on VIX quartiles.
+    - MANUAL : regimes based on slider boundaries v1 < v2 < v3.
     """
+    active_store = active_store or []
+    weights_store = weights_store or {}
+    initial_equity = float(initial_equity or 100000.0)
+
+    # Determine mode consistent with toggle_corr5_vix_mode
+    n_auto = n_auto or 0
+    n_manual = n_manual or 0
+    manual_mode = n_manual > n_auto
+
+    vix_mode = "auto"
+    bounds: list[float] | None = None
+
+    if manual_mode:
+        # Use manual bounds only if all three sliders have values
+        raw_bounds = [v1, v2, v3]
+        if all(b is not None for b in raw_bounds):
+            try:
+                bounds = sorted(float(b) for b in raw_bounds)
+                vix_mode = "manual"
+            except Exception:
+                # Fallback to AUTO if parsing fails
+                vix_mode = "auto"
+                bounds = None
+
     info = _build_corr5_vix_matrix(
-        active_store=active_store or [],
-        weights_store=weights_store or {},
+        active_store=active_store,
+        weights_store=weights_store,
         initial_equity=initial_equity,
+        vix_mode=vix_mode,
+        manual_bounds=bounds,
     )
+
     return _corr5_vix_heatmap_figure(info)
-
-
-def _corr5_heatmap_figure(
-    corr_mat: pd.DataFrame,
-    regime_names: list[str],
-    axis_labels: list[str],     # either truncated names or S1/S2/S3
-    labels_full: list[str],
-    title: str,
-) -> go.Figure:
-
-    if corr_mat is None or corr_mat.empty:
-        return _empty_corr_figure("Not enough data to compute regime correlations.")
-
-    # R x N
-    mat = corr_mat.values
-    R, N = mat.shape
-
-    # customdata for full names in tooltips (rows = regimes, cols = S1/S2…)
-    customdata = np.empty((R, N, 2), dtype=object)
-    for i in range(R):
-        for j in range(N):
-            customdata[i, j, 0] = regime_names[i]
-            customdata[i, j, 1] = labels_full[j]
-
-    fig = go.Figure()
-    fig.add_trace(
-        go.Heatmap(
-            z=mat,
-            x=axis_labels,
-            y=regime_names,
-            customdata=customdata,
-            colorscale="RdBu_r",
-            zmin=-1.0,
-            zmax=1.0,
-            zmid=0.0,
-            hovertemplate=(
-                "Regime: %{customdata[0]}<br>"
-                "Strategy: %{customdata[1]}<br>"
-                "Corr: %{z:.2f}<extra></extra>"
-            ),
-        )
-    )
-
-    fig.update_layout(
-        title=title,
-        template="plotly_dark",
-        paper_bgcolor="#222222",
-        plot_bgcolor="#222222",
-        font={"color": "#EEEEEE"},
-        margin=dict(l=60, r=20, t=40, b=60),
-        xaxis=dict(tickangle=0, showgrid=False),
-        yaxis=dict(showgrid=False),
-    )
-
-    return fig
-
-
-
 
 
 def layout_page_2_portfolio():

@@ -4814,6 +4814,11 @@ def _of_prepare_series(selected_strategy_ids, metric_mode):
         return None
 
     all_trades = pd.concat(frames, ignore_index=True)
+    
+    # NEW: sort trades chronologically so "actual" metrics match Overview behaviour
+    if "Date Closed" in all_trades.columns:
+        all_trades["Date Closed"] = pd.to_datetime(all_trades["Date Closed"])
+        all_trades = all_trades.sort_values("Date Closed").reset_index(drop=True)
 
     metric_mode = metric_mode or "R"
     metric_mode = "PL" if metric_mode == "PL" else "R"

@@ -29,8 +29,6 @@ from core.sh_layout import (
     p1_strategy_store,   # reuse in-memory strategy data (with df)
 )
 from core.registry import list_portfolios
-# NEW: reuse strategy loader from Phase 1
-from pages.page1 import _get_strategy_trades
 
 
 def build_phase2_right_panel():
@@ -516,6 +514,93 @@ def build_phase2_right_panel():
                                                                     "marginBottom": "0.25rem",
                                                                 },
                                                             ),
+                                                            # --- CORR5 VIX mode controls (AUTO / MANUAL) ---
+                                                            html.Div(
+                                                                [
+                                                                    html.Span(
+                                                                        "VIX regime bucketing:",
+                                                                        style={
+                                                                            "fontSize": "0.75rem",
+                                                                            "color": "#CCCCCC",
+                                                                            "marginRight": "0.5rem",
+                                                                        },
+                                                                    ),
+                                                                    dbc.ButtonGroup(
+                                                                        [
+                                                                            dbc.Button(
+                                                                                "AUTO",
+                                                                                id="p2-corr5-vix-mode-auto",
+                                                                                n_clicks=1,
+                                                                                size="sm",
+                                                                                color="secondary",
+                                                                                outline=False,
+                                                                            ),
+                                                                            dbc.Button(
+                                                                                "MANUAL",
+                                                                                id="p2-corr5-vix-mode-manual",
+                                                                                n_clicks=0,
+                                                                                size="sm",
+                                                                                color="secondary",
+                                                                                outline=True,
+                                                                                style={"marginLeft": "0.3rem"},
+                                                                            ),
+                                                                        ],
+                                                                        size="sm",
+                                                                    ),
+                                                                ],
+                                                                style={
+                                                                    "display": "flex",
+                                                                    "alignItems": "center",
+                                                                    "marginBottom": "0.35rem",
+                                                                    "gap": "0.4rem",
+                                                                },
+                                                            ),
+                                                            
+                                                            # --- CORR5 manual VIX sliders (hidden in AUTO) ---
+                                                            html.Div(
+                                                                id="p2-corr5-vix-manual-container",
+                                                                style={
+                                                                    "display": "none",   # shown only in MANUAL
+                                                                    "marginBottom": "0.4rem",
+                                                                },
+                                                                children=[
+                                                                    html.Div(
+                                                                        "Manual VIX boundaries (three cut levels, low → high):",
+                                                                        style={
+                                                                            "fontSize": "0.75rem",
+                                                                            "color": "#CCCCCC",
+                                                                            "marginBottom": "0.15rem",
+                                                                        },
+                                                                    ),
+                                                                    dcc.Slider(
+                                                                        id="p2-corr5-vix-slider-1",
+                                                                        min=10,
+                                                                        max=45,
+                                                                        step=1,
+                                                                        value=15,
+                                                                        marks=None,
+                                                                        tooltip={"always_visible": False},
+                                                                    ),
+                                                                    dcc.Slider(
+                                                                        id="p2-corr5-vix-slider-2",
+                                                                        min=10,
+                                                                        max=45,
+                                                                        step=1,
+                                                                        value=20,
+                                                                        marks=None,
+                                                                        tooltip={"always_visible": False},
+                                                                    ),
+                                                                    dcc.Slider(
+                                                                        id="p2-corr5-vix-slider-3",
+                                                                        min=10,
+                                                                        max=45,
+                                                                        step=1,
+                                                                        value=30,
+                                                                        marks=None,
+                                                                        tooltip={"always_visible": False},
+                                                                    ),
+                                                                ],
+                                                            ),
                                                             dcc.Graph(
                                                                 id="p2-corr5-vix-heatmap",
                                                                 figure={},
@@ -558,6 +643,34 @@ def build_phase2_right_panel():
             ),
         ]
     )
+
+#--- CORR5 VIX regime AUTO/MANUAL
+
+@callback(
+    Output("p2-corr5-vix-manual-container", "style"),
+    Output("p2-corr5-vix-mode-auto", "outline"),
+    Output("p2-corr5-vix-mode-manual", "outline"),
+    Input("p2-corr5-vix-mode-auto", "n_clicks"),
+    Input("p2-corr5-vix-mode-manual", "n_clicks"),
+)
+def toggle_corr5_vix_mode(n_auto, n_manual):
+    """
+    Simple UI toggle for CORR5 VIX regime bucketing:
+    - AUTO: manual sliders hidden
+    - MANUAL: manual sliders shown
+    """
+    n_auto = n_auto or 0
+    n_manual = n_manual or 0
+
+    # Default: AUTO if no clicks yet, otherwise whichever button was clicked more
+    manual_mode = n_manual > n_auto
+
+    if manual_mode:
+        container_style = {"display": "block", "marginBottom": "0.4rem"}
+        return container_style, True, False  # AUTO outlined, MANUAL solid
+    else:
+        container_style = {"display": "none"}
+        return container_style, False, True  # AUTO solid, MANUAL outlined
 
 
 # ---------------------------------------------------------------------------
@@ -1611,6 +1724,265 @@ def _corr_alt_table_component(
 
 
 # ---------------------------------------------------------------------------
+# Phase 2 – CORR5 helper: strategy vs portfolio by VIX regime
+# ---------------------------------------------------------------------------
+
+def _build_corr5_vix_matrix(
+    active_store: list,
+    weights_store: dict | None,
+    initial_equity: float,
+) -> dict | None:
+    """
+    Build CORR5 matrix: for each strategy and each VIX regime bucket,
+    compute the Pearson correlation between strategy daily P&L and the
+    portfolio daily P&L restricted to that regime.
+
+    Regimes are defined as quartiles of daily entry-based Opening VIX.
+    Returns dict with:
+      - uids: list of strategy UIDs
+      - labels_full: full strategy names (same order as uids)
+      - labels_axis: y-axis labels (truncated or S1..Sn)
+      - bucket_labels: list of x-axis labels for VIX regimes
+      - corr: DataFrame shape (n_strats, 4) with correlations
+    """
+    # Build daily P&L matrix and portfolio series
+    series = _build_portfolio_timeseries(
+        active_store=active_store or [],
+        weights_store=weights_store or {},
+        weight_mode="factors",
+        initial_equity=float(initial_equity or 100000.0),
+    )
+    if series is None:
+        return None
+
+    pnl_df: pd.DataFrame = series["pnl_df"].copy()
+    portfolio_daily: pd.Series = series["portfolio_daily"]
+    dates: pd.DatetimeIndex = series["dates"]
+
+    if pnl_df.empty or pnl_df.shape[1] < 1:
+        return None
+
+    # Map uid -> display name based on Active list (selected only)
+    uid_to_name: dict[str, str] = {}
+    active_store = active_store or []
+    for row in active_store:
+        if not row.get("is_selected", False):
+            continue
+        uid = row.get("uid")
+        if not uid:
+            continue
+        raw_name = row.get("name") or uid or row.get("sid")
+        uid_to_name[uid] = raw_name
+
+    # Keep only selected UIDs present in pnl_df, preserve order
+    ordered_uids = [uid for uid in pnl_df.columns if uid in uid_to_name]
+    if len(ordered_uids) < 1:
+        return None
+    pnl_df = pnl_df[ordered_uids]
+
+    labels_full = [uid_to_name[uid] for uid in ordered_uids]
+    labels_short: list[str] = []
+    for name in labels_full:
+        if len(name) > 15:
+            labels_short.append(name[:15] + "…")
+        else:
+            labels_short.append(name)
+    codes = [f"S{i+1}" for i in range(len(ordered_uids))]
+
+    # Decide y-axis labels consistent with CORR1–CORR4
+    if len(ordered_uids) <= 10:
+        labels_axis = labels_short
+    else:
+        labels_axis = codes
+
+    # ------------------------------------------------------------------
+    # Build daily Opening VIX per date (entry-based) from strategy CSVs
+    # ------------------------------------------------------------------
+    date_to_vix: dict[object, list[float]] = {}
+
+    for row in active_store:
+        if not row.get("is_selected", False):
+            continue
+        uid = row.get("uid")
+        if not uid:
+            continue
+        meta = p1_strategy_store.get(uid, {})
+        df = meta.get("df")
+        if df is None or df.empty:
+            continue
+        if "Date Closed" not in df.columns or "Opening VIX" not in df.columns:
+            continue
+
+        tmp = df[["Date Closed", "Opening VIX"]].copy()
+        tmp["Date Closed"] = pd.to_datetime(tmp["Date Closed"]).dt.date
+        tmp = tmp.dropna(subset=["Opening VIX"])
+        if tmp.empty:
+            continue
+
+        for d, v in zip(tmp["Date Closed"], tmp["Opening VIX"]):
+            try:
+                v_float = float(v)
+            except (TypeError, ValueError):
+                continue
+            if np.isnan(v_float):
+                continue
+            date_to_vix.setdefault(d, []).append(v_float)
+
+    if not date_to_vix:
+        return None
+
+    # Align VIX to portfolio date index
+    vix_values: list[float] = []
+    for ts in dates:
+        d = ts.date()
+        vals = date_to_vix.get(d)
+        if vals:
+            vix_values.append(float(np.mean(vals)))
+        else:
+            vix_values.append(np.nan)
+
+    vix_series = pd.Series(vix_values, index=dates, name="Opening VIX").dropna()
+    if vix_series.empty:
+        return None
+
+    # Define VIX regimes using quartiles
+    q = vix_series.quantile([0.25, 0.5, 0.75])
+    q1, q2, q3 = float(q.iloc[0]), float(q.iloc[1]), float(q.iloc[2])
+
+    def _bucket(v: float) -> int:
+        if v <= q1:
+            return 0
+        elif v <= q2:
+            return 1
+        elif v <= q3:
+            return 2
+        else:
+            return 3
+
+    bucket_series = vix_series.apply(_bucket)
+
+    buckets = [0, 1, 2, 3]
+    data = np.full((len(ordered_uids), len(buckets)), np.nan, dtype=float)
+
+    # Compute correlation within each regime bucket
+    for b_idx, b in enumerate(buckets):
+        mask = bucket_series == b
+        if int(mask.sum()) < 5:
+            continue
+
+        # Align to pnl_df / portfolio index
+        idx_b = mask.index[mask]
+        port_b = portfolio_daily.reindex(idx_b).astype(float)
+        pnl_b = pnl_df.reindex(idx_b)
+
+        if port_b.std(ddof=0) == 0:
+            continue
+
+        for i, uid in enumerate(ordered_uids):
+            s = pnl_b[uid].astype(float)
+            if s.std(ddof=0) == 0:
+                corr_val = np.nan
+            else:
+                try:
+                    corr_val = float(
+                        np.corrcoef(s.values, port_b.values)[0, 1]
+                    )
+                except Exception:
+                    corr_val = np.nan
+            data[i, b_idx] = corr_val
+
+    corr = pd.DataFrame(
+        data,
+        index=ordered_uids,
+        columns=buckets,
+    )
+
+    bucket_labels = [
+        f"Q1\nVIX ≤ {q1:.1f}",
+        f"Q2\n{q1:.1f}–{q2:.1f}",
+        f"Q3\n{q2:.1f}–{q3:.1f}",
+        f"Q4\nVIX ≥ {q3:.1f}",
+    ]
+
+    return {
+        "uids": ordered_uids,
+        "labels_full": labels_full,
+        "labels_axis": labels_axis,
+        "bucket_labels": bucket_labels,
+        "corr": corr,
+    }
+
+
+def _corr5_vix_heatmap_figure(info: dict | None) -> go.Figure:
+    """
+    Render CORR5 matrix as a heatmap.
+
+    Y-axis: strategies (truncated names or S1..Sn).
+    X-axis: VIX regime buckets (quartiles of Opening VIX).
+    """
+    if not info:
+        return _empty_corr_figure(
+            "Select at least one strategy with Opening VIX data to see CORR5."
+        )
+
+    corr: pd.DataFrame = info["corr"]
+    uids: list[str] = info["uids"]
+    labels_axis: list[str] = info["labels_axis"]
+    labels_full: list[str] = info["labels_full"]
+    bucket_labels: list[str] = info["bucket_labels"]
+
+    if corr is None or corr.empty or len(uids) == 0:
+        return _empty_corr_figure(
+            "Select at least one strategy with Opening VIX data to see CORR5."
+        )
+
+    # Ensure row order consistent with uids
+    corr = corr.reindex(index=uids)
+    z = corr.values
+    n_strats = len(uids)
+    n_buckets = len(bucket_labels)
+
+    # customdata: full strategy name + regime label
+    customdata = np.empty((n_strats, n_buckets, 2), dtype=object)
+    for i in range(n_strats):
+        for j in range(n_buckets):
+            customdata[i, j, 0] = labels_full[i]
+            customdata[i, j, 1] = bucket_labels[j]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Heatmap(
+            z=z,
+            x=bucket_labels,
+            y=labels_axis,
+            customdata=customdata,
+            colorscale="RdBu_r",
+            zmin=-1,
+            zmax=1,
+            zmid=0,
+            colorbar=dict(title="ρ"),
+            hovertemplate=(
+                "Strategy: %{customdata[0]}<br>"
+                "Regime: %{customdata[1]}<br>"
+                "Corr: %{z:.2f}<extra></extra>"
+            ),
+        )
+    )
+
+    fig.update_layout(
+        title="CORR5 – Strategy vs Portfolio correlation by VIX regime",
+        template="plotly_dark",
+        paper_bgcolor="#222222",
+        plot_bgcolor="#222222",
+        font={"color": "#EEEEEE"},
+        margin=dict(l=60, r=20, t=40, b=60),
+        xaxis=dict(title="Opening VIX regime (quartiles)"),
+        yaxis=dict(title="Strategy", autorange="reversed"),
+    )
+    return fig
+
+
+# ---------------------------------------------------------------------------
 # Phase 2 – Correlation callback (CORR1–CORR4)
 # ---------------------------------------------------------------------------
 
@@ -1734,178 +2106,31 @@ def update_portfolio_correlation(
     return pearson_fig, downside_fig, tail_fig, alt_table
 
 
-
-
 # ---------------------------------------------------------------------------
-# Phase 2 – CORR5 (Strategy vs Portfolio correlation by VIX regime)
+# Phase 2 – CORR5 callback (strategy vs portfolio by VIX regime)
 # ---------------------------------------------------------------------------
 
-def _build_corr5_vix_regimes(
-    active_store: list,
-    weights_store: dict | None,
-    initial_equity: float,
-) -> dict | None:
+@callback(
+    Output("p2-corr5-vix-heatmap", "figure"),
+    Input("p1-active-list-store", "data"),
+    Input("p2-weights-store", "data"),
+    Input("p2-initial-equity-input", "value"),
+)
+def update_corr5_vix_regime(
+    active_store,
+    weights_store,
+    initial_equity,
+):
     """
-    CORR5:
-    Entry-based VIX regimes (Opening VIX), strategy-vs-portfolio correlations.
-
-    Returns:
-      {
-        'regime_names': [...],           # e.g. ['VIX_Q1','VIX_Q2','VIX_Q3','VIX_Q4']
-        'uids': [...],
-        'labels_full': [...],
-        'labels_short': [...],
-        'codes': [...],                  # 'S1','S2',...
-        'corr_matrix': DataFrame (R x N),
-      }
+    Update CORR5 heatmap: correlation of each strategy vs portfolio
+    by Opening VIX regime (quartiles).
     """
-
-    # --------------------------
-    # 1. Build aligned P&L (same engine as Analytics)
-    # --------------------------
-    series = _build_portfolio_timeseries(
-        active_store=active_store,
-        weights_store=weights_store,
-        weight_mode="factors",
-        initial_equity=float(initial_equity or 100000.0),
+    info = _build_corr5_vix_matrix(
+        active_store=active_store or [],
+        weights_store=weights_store or {},
+        initial_equity=initial_equity,
     )
-    if series is None:
-        return None
-
-    pnl_df: pd.DataFrame = series["pnl_df"]      # strategy daily P&L
-    port_daily: pd.Series = series["portfolio_daily"]  # portfolio daily P&L
-    date_index = pnl_df.index
-
-    if pnl_df.empty or len(pnl_df.columns) < 1:
-        return None
-
-    # --------------------------
-    # 2. Collect mapping: uid → name
-    # --------------------------
-    uid_to_name = {}
-    for row in active_store or []:
-        if not row.get("is_selected", False):
-            continue
-        uid = row.get("uid")
-        if not uid:
-            continue
-        raw_name = row.get("name") or uid or row.get("sid")
-        uid_to_name[uid] = raw_name
-
-    uids = [uid for uid in pnl_df.columns if uid in uid_to_name]
-    if len(uids) == 0:
-        return None
-
-    labels_full = [uid_to_name[u] for u in uids]
-    labels_short = [
-        (name[:15] + "…") if len(name) > 15 else name for name in labels_full
-    ]
-    codes = [f"S{i+1}" for i in range(len(uids))]
-
-    # --------------------------
-    # 3. Extract Opening VIX per date (entry-based regime)
-    # --------------------------
-    # We aggregate Opening VIX across all trades opened that day; median is robust.
-    # Reuse the raw-trades store attached to active_store rows.
-    # Each active_store row has row['df'] with the original OO file.
-    # We combine them.
-
-    # Build a single DF with columns ['Date', 'Opening VIX']
-    daily_vix = {}
-    for row in active_store or []:
-        if not row.get("is_selected", False):
-            continue
-        df = row.get("df")
-        if df is None or df.empty:
-            continue
-        if "DateOpened" not in df or "Opening VIX" not in df:
-            continue
-
-        for date_str, subdf in df.groupby("DateOpened"):
-            try:
-                vix_vals = subdf["Opening VIX"].dropna().values
-                if len(vix_vals) == 0:
-                    continue
-                date_dt = pd.to_datetime(date_str).normalize()
-                if date_dt not in daily_vix:
-                    daily_vix[date_dt] = []
-                daily_vix[date_dt].extend(vix_vals)
-            except Exception:
-                continue
-
-    if len(daily_vix) == 0:
-        return None
-
-    # Build a Series aligned to daily_pnl (DateClosed index)
-    # For each P&L day D we assign the VIX for that day
-    vix_series = pd.Series(index=date_index, dtype=float)
-    for d in date_index:
-        d0 = d.normalize()
-        if d0 in daily_vix:
-            vix_series.loc[d] = np.nanmedian(daily_vix[d0])
-        else:
-            vix_series.loc[d] = np.nan
-
-    vix_series = vix_series.dropna()
-    if vix_series.empty:
-        return None
-
-    # --------------------------
-    # 4. Build VIX quartile regimes (same as Phase 1)
-    # --------------------------
-    qs = vix_series.quantile([0, 0.25, 0.5, 0.75, 1]).values
-    edges = [qs[0], qs[1], qs[2], qs[3], qs[4]]
-    regime_names = ["VIX_Q1", "VIX_Q2", "VIX_Q3", "VIX_Q4"]
-
-    def assign_regime(vix):
-        if pd.isna(vix):
-            return None
-        if vix <= edges[1]:
-            return "VIX_Q1"
-        elif vix <= edges[2]:
-            return "VIX_Q2"
-        elif vix <= edges[3]:
-            return "VIX_Q3"
-        else:
-            return "VIX_Q4"
-
-    regime_by_day = vix_series.apply(assign_regime)
-
-    # --------------------------
-    # 5. Compute corr(strategy_i , portfolio | regime)
-    # --------------------------
-    rows = []
-    for reg in regime_names:
-        mask = (regime_by_day == reg)
-        if mask.sum() < 5:
-            # not enough data
-            rows.append([np.nan] * len(uids))
-            continue
-
-        sub_port = port_daily[mask]
-        row_vals = []
-        for uid in uids:
-            sub_strat = pnl_df[uid][mask]
-            if sub_strat.dropna().shape[0] < 5:
-                row_vals.append(np.nan)
-                continue
-            try:
-                cval = np.corrcoef(sub_strat.values, sub_port.values)[0, 1]
-            except Exception:
-                cval = np.nan
-            row_vals.append(cval)
-        rows.append(row_vals)
-
-    corr_matrix = pd.DataFrame(rows, index=regime_names, columns=uids)
-
-    return {
-        "regime_names": regime_names,
-        "uids": uids,
-        "labels_full": labels_full,
-        "labels_short": labels_short,
-        "codes": codes,
-        "corr_matrix": corr_matrix,
-    }
+    return _corr5_vix_heatmap_figure(info)
 
 
 def _corr5_heatmap_figure(

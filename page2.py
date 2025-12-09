@@ -65,7 +65,6 @@ def build_phase2_right_panel():
                                         # ------- Top controls + metrics ---------------------------------
                                         dbc.Row(
                                             [
-                                                # Left: Initial equity input
                                                 dbc.Col(
                                                     html.Div(
                                                         [
@@ -97,51 +96,12 @@ def build_phase2_right_panel():
                                                             "gap": "0.5rem",
                                                         },
                                                     ),
-                                                    md=5,
-                                                ),
-                                                # Right: Weighting mode selector
-                                                dbc.Col(
-                                                    html.Div(
-                                                        [
-                                                            html.Span(
-                                                                "Weighting mode:",
-                                                                style={
-                                                                    "marginRight": "0.5rem",
-                                                                    "fontSize": "0.85rem",
-                                                                },
-                                                            ),
-                                                            dbc.RadioItems(
-                                                                id="p2-weight-mode",
-                                                                options=[
-                                                                    {
-                                                                        "label": "Factors (fractional)",
-                                                                        "value": "factors",
-                                                                    },
-                                                                    {
-                                                                        "label": "Integer lots (preview)",
-                                                                        "value": "lots",
-                                                                    },
-                                                                ],
-                                                                value="factors",
-                                                                inline=True,
-                                                                className="btn-group",
-                                                                inputClassName="btn-check",
-                                                                labelClassName="btn btn-sm btn-outline-info",
-                                                                labelCheckedClassName="btn btn-sm btn-info active",
-                                                            ),
-                                                        ],
-                                                        style={
-                                                            "display": "flex",
-                                                            "alignItems": "center",
-                                                            "justifyContent": "flex-end",
-                                                            "gap": "0.75rem",
-                                                        },
-                                                    ),
-                                                    md=7,
+                                                    md=12,
                                                 ),
                                             ],
                                             className="mb-2",
                                         ),
+
                                         # Metrics table / summary for portfolio
                                         html.Div(
                                             id="p2-portfolio-metrics",
@@ -528,38 +488,32 @@ def _build_portfolio_timeseries(
     Output("p2-dow-bar-graph", "figure"),
     Input("p1-active-list-store", "data"),
     Input("p2-weights-store", "data"),
-    Input("p2-weight-mode", "value"),
+    #Input("p2-weight-mode", "value"),
     Input("p2-initial-equity-input", "value"),
     Input("p2-show-strategy-equity", "value"),
 )
 def update_portfolio_analytics(
     active_store,
     weights_store,
-    weight_mode,
+    #weight_mode,
     initial_equity,
     show_strategy_equity,
 ):
     """
     Build portfolio-level metrics & charts.
 
-    - Metrics and primary lines use the selected weight_mode.
-    - Secondary (overlay) lines for equity/DD are always built with 'lots'
-      when main is 'factors'/'equal', and with 'factors' when main is 'lots'.
+    - Metrics and primary lines always use *factors* sizing.
+    - Secondary (overlay) lines for equity/DD always use *integer lots*
+      as a preview.
     """
     # ------------------------------------------------------------------
-    # Decide main vs overlay weighting modes
+    # Fixed weighting modes: main = factors, overlay = lots
     # ------------------------------------------------------------------
-    main_mode = (weight_mode or "factors").lower()
-    if main_mode not in ("factors", "equal", "lots"):
-        main_mode = "factors"
-
-    # Overlay mode: use the "other" view so we can compare
-    if main_mode == "lots":
-        overlay_mode = "factors"
-    else:
-        overlay_mode = "lots"
+    main_mode = "factors"
+    overlay_mode = "lots"
 
     base_initial_equity = float(initial_equity or 100000.0)
+
 
     # ------------------------------------------------------------------
     # Build main series (for metrics and primary lines)
@@ -762,7 +716,7 @@ def update_portfolio_analytics(
         },
     )
     
-    def _clean_name(raw: str) -> str:
+    def _clean_name(raw: str) -> str:  #To be removed as we no longer use the FOLD and SINGLE prefixes CHANGE REQUEST
         """
         Remove noisy prefixes like 'FOLD.' / 'SINGLE.' and extra spaces
         for display in legends / tooltips.
@@ -832,7 +786,7 @@ def update_portfolio_analytics(
         yaxis_title="Equity",
         legend=dict(
             orientation="h",
-            yanchor="bottom",
+            yanchor="top",
             y=1.02,
             xanchor="right",
             x=1.0,
@@ -950,7 +904,7 @@ def update_portfolio_analytics(
         yaxis_title="Drawdown",
         legend=dict(
             orientation="h",
-            yanchor="bottom",
+            yanchor="middle",
             y=1.02,
             xanchor="right",
             x=1.0,

@@ -15,6 +15,10 @@ import pandas as pd
 from datetime import datetime
 import dash_bootstrap_components as dbc
 from dash import html, dcc, Input, Output, State, callback, ctx, ALL, no_update
+import plotly.colors as pc
+import hashlib
+import colorsys
+
 
 from core.registry import (
     load_registry,
@@ -39,6 +43,33 @@ from core.registry import (
 # Key: strategy uid, Value: dict with metadata (uid, name, file_path, cached df, etc.)
 
 p1_strategy_store = {}
+
+def strategy_color_for_uid(uid: str) -> str:
+    """
+    Deterministic vivid color for a given strategy UID.
+
+    Uses an MD5-based seed and a fixed large multiplier to de-correlate
+    nearby UIDs so colours are well separated even for similar names.
+    """
+    if not uid:
+        return "#888888"
+
+    # Stable hash
+    digest = hashlib.md5(uid.encode("utf-8")).hexdigest()
+    seed = int(digest[:8], 16)
+
+    # Scramble the hue with a large odd multiplier (coprime to 360)
+    # so close seeds do NOT give close hues.
+    scrambled = (seed * 107) % 360          # 137 is arbitrary but effective
+    hue = scrambled / 360.0                 # 0.0–1.0
+
+    # Keep these high for dark theme contrast
+    saturation = 0.85
+    value = 0.95
+
+    r, g, b = colorsys.hsv_to_rgb(hue, saturation, value)
+    return f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
+
 
 
 def create_notification(level: str, text: str) -> dict:
@@ -1188,7 +1219,8 @@ def load_or_toggle_strategies(
                         "uid": uid,
                         "file_name": f"{uid}.csv",
                         "is_saved": False,
-                        "name": f"FOLD. {os.path.splitext(f)[0]}",
+                        #"name": f"FOLD. {os.path.splitext(f)[0]}",  FOLD. was here 
+                        "name": f"{os.path.splitext(f)[0]}",
                         "file_path": full_path,
                         "folder": os.path.basename(folder),
                         "source": "folder",
@@ -1298,7 +1330,8 @@ def load_or_toggle_strategies(
                     "uid": uid,
                     "file_name": f"{uid}.csv",
                     "is_saved": False,
-                    "name": f"SINGLE. {os.path.splitext(fname)[0]}",
+                    #"name": f"SINGLE. {os.path.splitext(fname)[0]}",    SINGLE was here
+                    "name": f"{os.path.splitext(fname)[0]}",
                     "file_path": stored_path,
                     "folder": "dataupl",
                     "source": "upload",
@@ -2131,7 +2164,9 @@ def update_weights_panel(
                         style={
                             "width": "6px",
                             "height": "22px",
-                            "backgroundColor": "#888888",
+                            #"backgroundColor": "#888888",
+                            "backgroundColor": strategy_color_for_uid(uid),
+
                             "borderRadius": "3px",
                             "marginRight": "6px",
                         }
@@ -2597,72 +2632,4 @@ def remove_from_active_list(
     
     return new_options, new_values
 
-    
 
-
-
-# @callback(
-#     Output("p1-strategy-checklist", "value", allow_duplicate=True),
-#     Input({"type": "active-row-checkbox", "uid": ALL}, "value"),
-#     State("p1-strategy-checklist", "options"),
-#     State("p1-strategy-checklist", "value"),
-#     State("p1-active-list-store", "data"),
-#     prevent_initial_call=True,
-# )
-# def sync_active_checkbox_to_checklist(
-#     checkbox_values,
-#     existing_options,
-#     existing_values,
-#     active_store,
-# ):
-#     """
-#     Sync the Active row checkboxes to the main checklist values.
-#     This ensures is_selected state is properly tracked.
-#     """
-#     triggered_id = ctx.triggered_id
-    
-#     if not isinstance(triggered_id, dict) or triggered_id.get("type") != "active-row-checkbox":
-#         return no_update
-    
-#     uid = triggered_id.get("uid")
-#     if not uid:
-#         return no_update
-    
-#     existing_options = existing_options or []
-#     existing_values = existing_values or []
-#     active_store = active_store or []
-    
-#     # Find the sid for this uid
-#     sid = None
-#     for item in active_store:
-#         if item.get("uid") == uid:
-#             sid = item.get("sid")
-#             break
-    
-#     if not sid:
-#         return no_update
-    
-#     # Find the checkbox value that was just changed
-#     new_is_selected = None
-#     for opt in existing_options:
-#         meta = p1_strategy_store.get(opt["value"], {})
-#         if meta.get("uid") == uid or opt["value"] == sid:
-#             # Get the index in active_store to find checkbox value
-#             for i, item in enumerate(active_store):
-#                 if item.get("uid") == uid:
-#                     if i < len(checkbox_values):
-#                         new_is_selected = checkbox_values[i]
-#                     break
-#             break
-    
-#     if new_is_selected is None:
-#         return no_update
-    
-#     # Update values
-#     new_values = list(existing_values)
-#     if new_is_selected and sid not in new_values:
-#         new_values.append(sid)
-#     elif not new_is_selected and sid in new_values:
-#         new_values.remove(sid)
-    
-#     return new_values

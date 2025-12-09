@@ -13,6 +13,7 @@ import dash_bootstrap_components as dbc
 from dash import html, dcc, Input, Output, State, callback, ctx
 from datetime import datetime
 import plotly.graph_objs as go
+import re
 
 import dash_bootstrap_components as dbc
 from dash import html, dcc, Input, Output, State, callback
@@ -23,7 +24,7 @@ from core import sh_layout
 
 
 #--- Shared Layout import
-from core.sh_layout import build_data_input_section, build_strategy_sidebar
+from core.sh_layout import build_data_input_section, build_strategy_sidebar,strategy_color_for_uid
 # --------------------------------------------------------------------
 # Strategy & portfolio registry – JSON-based (core.registry)
 # --------------------------------------------------------------------
@@ -77,6 +78,16 @@ def _minutes_to_hhmm(m: float) -> str:
     h = m_int // 60
     mm = m_int % 60
     return f"{h:02d}:{mm:02d}"
+
+def _clean_name(raw: str) -> str: #To be removed as we no longer use the FOLD and SINGLE prefixes CHANGE REQUEST
+    """
+    Remove noisy prefixes like 'FOLD.' / 'SINGLE.' and extra spaces
+    for display in legends / tooltips.
+    """
+    if not raw:
+        return ""
+    name = re.sub(r"^(FOLD\.|SINGLE\.)\s*", "", str(raw)).strip()
+    return name or str(raw)
 
 # --------------- VIX THRESHOLDS FOR PARAMETERS - MEAN R  VIX SLIDERS
 
@@ -2742,6 +2753,7 @@ def update_overview(selected_strategy_ids, mode):
     # Build equity figure (same as before, cum P&L)
     # ----------------------------------------------------------
     equity_traces = []
+    
     if mode == "cumulative":
         if not agg_equity.empty:
             equity_traces.append(
@@ -2757,12 +2769,27 @@ def update_overview(selected_strategy_ids, mode):
         for sid, series in per_strat_equity.items():
             if series.empty:
                 continue
+            
+            clean_name = _clean_name(label_map.get(sid, sid))
+            
+            # Look up color in the shared store (same as weights / page2)
+            meta = sh_layout.p1_strategy_store.get(sid, {}) or {}
+            color = meta.get("color")
+            
+            line_kwargs = {"width": 1.5}
+            if color:
+                line_kwargs["color"] = color
+            
             equity_traces.append(
                 go.Scatter(
                     x=series.index,
                     y=series.values,
                     mode="lines",
-                    name=label_map.get(sid, sid),
+                    name=clean_name,
+                    line=line_kwargs,
+                    hovertemplate=(
+                        f"{clean_name}<br>$%{{y:,.0f}}<br>%{{x|%d-%b-%y}}<extra></extra>"
+                    ),
                 )
             )
 
@@ -2796,13 +2823,28 @@ def update_overview(selected_strategy_ids, mode):
         for sid, series in per_strat_equity.items():
             if series.empty:
                 continue
+            
+            clean_name = _clean_name(label_map.get(sid, sid))
+            dd = compute_dd(series)
+
+            meta = sh_layout.p1_strategy_store.get(sid, {}) or {}
+            color = meta.get("color")
+
+            line_kwargs = {"width": 1.5}
+            if color:
+                line_kwargs["color"] = color
+            
             dd = compute_dd(series)
             dd_traces.append(
                 go.Scatter(
                     x=dd.index,
                     y=dd.values,
                     mode="lines",
-                    name=label_map.get(sid, sid),
+                    name=clean_name,
+                    line=line_kwargs,
+                    hovertemplate=(
+                        f"{clean_name}<br>$%{{y:,.0f}}<br>%{{x|%d-%b-%y}}<extra></extra>"
+                    ),
                 )
             )
 

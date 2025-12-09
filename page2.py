@@ -615,7 +615,55 @@ def build_phase2_right_panel():
                                             ],
                                             className="mb-3",
                                         ),
-
+                                        # ---------------- Row 4: CORR6 – Drawdown overlap matrix -------------------
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    html.Div(
+                                                        [
+                                                            html.Div(
+                                                                [
+                                                                    html.Span(
+                                                                        "CORR6 – Drawdown overlap matrix",
+                                                                        style={
+                                                                            "fontSize": "0.8rem",
+                                                                            "fontWeight": "bold",
+                                                                            "color": "#DDDDDD",
+                                                                        },
+                                                                    ),
+                                                                    html.Span(
+                                                                        " ⓘ",
+                                                                        title=(
+                                                                            "For each pair of strategies, fraction of days where both are in drawdown "
+                                                                            "(dd > 0) relative to days where at least one is in drawdown. "
+                                                                            "1 = always in drawdown together, 0 = never."
+                                                                        ),
+                                                                        style={
+                                                                            "marginLeft": "0.35rem",
+                                                                            "cursor": "help",
+                                                                            "fontSize": "0.8rem",
+                                                                            "color": "#AAAAAA",
+                                                                        },
+                                                                    ),
+                                                                ],
+                                                                style={
+                                                                    "display": "flex",
+                                                                    "alignItems": "center",
+                                                                    "marginBottom": "0.25rem",
+                                                                },
+                                                            ),
+                                                            dcc.Graph(
+                                                                id="p2-corr-ddoverlap-heatmap",
+                                                                figure={},
+                                                                style={"height": "300px"},
+                                                            ),
+                                                        ]
+                                                    ),
+                                                    md=12,
+                                                )
+                                            ],
+                                            className="mb-3",
+                                        ),
                                     ],
                                     style={"padding": "0.75rem", "fontSize": "0.85rem"},
                                 ),
@@ -2021,6 +2069,78 @@ def _corr5_vix_heatmap_figure(info: dict | None) -> go.Figure:
     )
     return fig
 
+# ---------------------------------------------------------------------------
+# CORR6 – Drawdown overlap matrix helper
+# ---------------------------------------------------------------------------
+
+def _build_corr6_ddoverlap_matrix(
+    pnl_df: pd.DataFrame,
+    uids: list[str],
+) -> pd.DataFrame | None:
+    """
+    CORR6 helper – build drawdown–overlap matrix.
+
+    Parameters
+    ----------
+    pnl_df : DataFrame
+        Daily P&L per strategy, columns = strategy uids, index = dates.
+    uids : list[str]
+        Full ordered list of strategy uids we want in the matrix.
+
+    Returns
+    -------
+    DataFrame or None
+        Square matrix with index/columns = uids. Values in [0,1] are
+        overlap fractions; 0 on diagonal if a strategy never has a
+        drawdown.
+    """
+    if pnl_df is None or pnl_df.empty:
+        return None
+
+    # Keep only columns we actually have, in the requested order
+    cols = [uid for uid in uids if uid in pnl_df.columns]
+    if len(cols) < 2:
+        return None
+
+    pnl = pnl_df[cols].copy()
+
+    # Equity, running max, drawdown, "in drawdown" mask
+    equity = pnl.cumsum()
+    running_max = equity.cummax()
+    dd = running_max - equity
+    in_dd = dd > 0
+
+    n = len(cols)
+    overlap = np.zeros((n, n), dtype=float)
+
+    for i in range(n):
+        mi = in_dd.iloc[:, i]
+        for j in range(n):
+            mj = in_dd.iloc[:, j]
+            union = mi | mj
+            if union.sum() == 0:
+                overlap[i, j] = 0.0
+            else:
+                inter = mi & mj
+                overlap[i, j] = float(inter.sum()) / float(union.sum())
+
+    # Diagonal: if a strategy never has a drawdown, set to 0 instead of 1
+    for k in range(n):
+        if in_dd.iloc[:, k].any():
+            overlap[k, k] = 1.0
+        else:
+            overlap[k, k] = 0.0
+
+    mat = pd.DataFrame(overlap, index=cols, columns=cols)
+
+    # Expand to full uids list so _corr_heatmap_figure can reorder safely
+    mat = mat.reindex(index=uids, columns=uids)
+
+    return mat
+
+
+
+
 
 # ---------------------------------------------------------------------------
 # Phase 2 – Correlation callback (CORR1–CORR4)
@@ -2210,6 +2330,88 @@ def update_corr5_vix_regime(
     )
 
     return _corr5_vix_heatmap_figure(info)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 – CORR6 callback (drawdown overlap matrix)
+# ---------------------------------------------------------------------------
+
+@callback(
+    Output("p2-corr-ddoverlap-heatmap", "figure"),
+    Input("p1-active-list-store", "data"),
+    Input("p2-weights-store", "data"),
+    Input("p2-initial-equity-input", "value"),
+)
+def update_corr6_ddoverlap(
+    active_store,
+    weights_store,
+    initial_equity,
+):
+    """
+    Update CORR6 heatmap: drawdown-overlap matrix between strategies.
+
+    Uses each strategy's own 1× equity curve (daily P&L cumsum); weights do not
+    affect which days are in drawdown, so sizing is ignored here.
+    """
+    active_store = active_store or []
+    weights_store = weights_store or {}
+    initial_equity = float(initial_equity or 100000.0)
+
+    # Need at least 2 selected strategies
+    selected_rows = [r for r in active_store if r.get("is_selected")]
+    if len(selected_rows) < 2:
+        msg = "Select at least two strategies in the Active list to see drawdown overlap."
+        return _empty_corr_figure(msg)
+
+    # Reuse correlation helper for consistent labels / codes
+    corr_data = _build_corr_matrices(
+        active_store=active_store,
+        weights_store=weights_store,
+        initial_equity=initial_equity,
+    )
+    if corr_data is None:
+        msg = "No overlapping daily P&L data for selected strategies."
+        return _empty_corr_figure(msg)
+
+    uids = corr_data["uids"]
+    labels_full = corr_data["labels_full"]
+    labels_short = corr_data["labels_short"]
+    codes = corr_data["codes"]
+
+    # Build daily P&L matrix (same engine as elsewhere)
+    ts_info = _build_portfolio_timeseries(
+        active_store=active_store,
+        weights_store=weights_store,
+        weight_mode="factors",
+        initial_equity=initial_equity,
+    )
+    if ts_info is None:
+        msg = "No overlapping daily P&L data for selected strategies."
+        return _empty_corr_figure(msg)
+
+    pnl_df: pd.DataFrame = ts_info["pnl_df"]
+    # Keep only the strategies used in correlation matrices, in the same order
+    pnl_df = pnl_df[[uid for uid in uids if uid in pnl_df.columns]]
+
+    # Build drawdown-overlap matrix
+    ddoverlap = _build_corr6_ddoverlap_matrix(pnl_df=pnl_df, uids=uids)
+
+    n_strat = len(uids)
+    axis_labels = labels_short if n_strat <= 10 else codes
+
+    fig = _corr_heatmap_figure(
+        mat=ddoverlap,
+        uids=uids,
+        labels_axis=axis_labels,
+        labels_full=labels_full,
+        title="CORR6 – Drawdown overlap (fraction of DD days overlapping)",
+        zmin=0.0,
+        zmax=1.0,
+        zmid=0.5,
+        zfmt=".2f",
+    )
+    return fig
+
 
 
 def layout_page_2_portfolio():

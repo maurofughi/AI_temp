@@ -664,6 +664,178 @@ def build_phase2_right_panel():
                                             ],
                                             className="mb-3",
                                         ),
+                                        #here
+                                        # ---------------- Row 5: CORR7 – Drawdown depth correlation -------------------
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    html.Div(
+                                                        [
+                                                            html.Div(
+                                                                [
+                                                                    html.Span(
+                                                                        "CORR7 – Drawdown depth correlation",
+                                                                        style={
+                                                                            "fontSize": "0.8rem",
+                                                                            "fontWeight": "bold",
+                                                                            "color": "#DDDDDD",
+                                                                        },
+                                                                    ),
+                                                                    html.Span(
+                                                                        " ⓘ",
+                                                                        title=(
+                                                                            "Correlation of drawdown depths between strategies, "
+                                                                            "computed only on days when both are in drawdown (dd > 0)."
+                                                                        ),
+                                                                        style={
+                                                                            "marginLeft": "0.35rem",
+                                                                            "cursor": "help",
+                                                                            "fontSize": "0.8rem",
+                                                                            "color": "#AAAAAA",
+                                                                        },
+                                                                    ),
+                                                                ],
+                                                                style={
+                                                                    "display": "flex",
+                                                                    "alignItems": "center",
+                                                                    "marginBottom": "0.25rem",
+                                                                },
+                                                            ),
+                                                            dcc.Graph(
+                                                                id="p2-corr-dddepth-heatmap",
+                                                                figure={},
+                                                                style={"height": "300px"},
+                                                            ),
+                                                        ]
+                                                    ),
+                                                    md=12,
+                                                )
+                                            ],
+                                            className="mb-3",
+                                        ),
+                                        #here
+                                        # ---------------- Row 6: BETA1 – Beta vs portfolio -------------------
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    html.Div(
+                                                        [
+                                                            html.Div(
+                                                                [
+                                                                    html.Span(
+                                                                        "BETA1 – Strategy beta vs portfolio",
+                                                                        style={
+                                                                            "fontSize": "0.8rem",
+                                                                            "fontWeight": "bold",
+                                                                            "color": "#DDDDDD",
+                                                                        },
+                                                                    ),
+                                                                    html.Span(
+                                                                        " ⓘ",
+                                                                        title=(
+                                                                            "For each strategy, OLS beta of daily P&L versus the portfolio daily P&L. "
+                                                                            "Beta > 1 means the strategy tends to amplify portfolio moves; beta < 0 "
+                                                                            "means it tends to move opposite to the portfolio."
+                                                                        ),
+                                                                        style={
+                                                                            "marginLeft": "0.35rem",
+                                                                            "cursor": "help",
+                                                                            "fontSize": "0.8rem",
+                                                                            "color": "#AAAAAA",
+                                                                        },
+                                                                    ),
+                                                                ],
+                                                                style={
+                                                                    "display": "flex",
+                                                                    "alignItems": "center",
+                                                                    "marginBottom": "0.25rem",
+                                                                },
+                                                            ),
+                                                            dbc.Row(
+                                                                [
+                                                                    dbc.Col(
+                                                                        dcc.Graph(
+                                                                            id="p2-beta-portfolio-bar",
+                                                                            figure={},
+                                                                            style={"height": "280px"},
+                                                                        ),
+                                                                        md=7,
+                                                                    ),
+                                                                    dbc.Col(
+                                                                        html.Div(
+                                                                            id="p2-beta-summary-table",
+                                                                            style={
+                                                                                "fontSize": "0.75rem",
+                                                                                "color": "#DDDDDD",
+                                                                                "overflowY": "auto",
+                                                                                "maxHeight": "280px",
+                                                                            },
+                                                                        ),
+                                                                        md=5,
+                                                                    ),
+                                                                ]
+                                                            ),
+                                                        ]
+                                                    ),
+                                                    md=12,
+                                                )
+                                            ],
+                                            className="mb-3",
+                                        ),
+                                        #here
+                                        # ---------------- Row 7: SD1 – Serial dependence (lag-1 autocorrelation) -------------------
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    html.Div(
+                                                        [
+                                                            html.Div(
+                                                                [
+                                                                    html.Span(
+                                                                        "SD1 – Serial dependence (lag-1 autocorrelation)",
+                                                                        style={
+                                                                            "fontSize": "0.8rem",
+                                                                            "fontWeight": "bold",
+                                                                            "color": "#DDDDDD",
+                                                                        },
+                                                                    ),
+                                                                    html.Span(
+                                                                        " ⓘ",
+                                                                        title=(
+                                                                            "For each strategy, lag-1 autocorrelation of daily P&L. "
+                                                                            "Values near 0 indicate no serial dependence; positive values "
+                                                                            "indicate clustering of gains/losses; negative values indicate "
+                                                                            "mean-reversion."
+                                                                        ),
+                                                                        style={
+                                                                            "marginLeft": "0.35rem",
+                                                                            "cursor": "help",
+                                                                            "fontSize": "0.8rem",
+                                                                            "color": "#AAAAAA",
+                                                                        },
+                                                                    ),
+                                                                ],
+                                                                style={
+                                                                    "display": "flex",
+                                                                    "alignItems": "center",
+                                                                    "marginBottom": "0.25rem",
+                                                                },
+                                                            ),
+                                                            dcc.Graph(
+                                                                id="p2-serial-ac-bar",
+                                                                figure={},
+                                                                style={"height": "260px"},
+                                                            ),
+                                                        ]
+                                                    ),
+                                                    md=12,
+                                                )
+                                            ],
+                                            className="mb-3",
+                                        ),
+
+
+
                                     ],
                                     style={"padding": "0.75rem", "fontSize": "0.85rem"},
                                 ),
@@ -2139,6 +2311,276 @@ def _build_corr6_ddoverlap_matrix(
     return mat
 
 
+# ---------------------------------------------------------------------------
+# CORR7 – Drawdown depth correlation helper
+# ---------------------------------------------------------------------------
+
+def _build_corr7_dddepth_matrix(pnl_df: pd.DataFrame, uids: list[str]) -> pd.DataFrame | None:
+    """
+    Build CORR7 matrix: correlation of drawdown depths between strategies.
+
+    For each strategy i:
+      equity_i = pnl_i.cumsum()
+      max_i    = equity_i.cummax()
+      dd_i     = max_i - equity_i
+      mask_i   = dd_i > 0  (days in drawdown)
+
+    For each pair (i, j), we compute Pearson corr(dd_i, dd_j) restricted to
+    days where BOTH are in drawdown (mask_i & mask_j).
+    """
+    if pnl_df is None or pnl_df.empty:
+        return None
+
+    cols = [uid for uid in uids if uid in pnl_df.columns]
+    if len(cols) < 2:
+        return None
+
+    pnl = pnl_df[cols].copy()
+
+    equity = pnl.cumsum()
+    running_max = equity.cummax()
+    dd = running_max - equity  # same shape as pnl
+
+    n = len(cols)
+    mat = np.full((n, n), np.nan, dtype=float)
+
+    for i in range(n):
+        uid_i = cols[i]
+        dd_i = dd[uid_i]
+        mask_i = dd_i > 0
+
+        for j in range(i, n):
+            uid_j = cols[j]
+            dd_j = dd[uid_j]
+            mask_j = dd_j > 0
+
+            mask_both = mask_i & mask_j
+            n_both = int(mask_both.sum())
+            if n_both < 5:
+                val = np.nan
+            else:
+                x = dd_i[mask_both].astype(float)
+                y = dd_j[mask_both].astype(float)
+
+                if x.std(ddof=0) == 0 or y.std(ddof=0) == 0:
+                    val = np.nan
+                else:
+                    try:
+                        val = float(np.corrcoef(x.values, y.values)[0, 1])
+                    except Exception:
+                        val = np.nan
+
+            mat[i, j] = val
+            mat[j, i] = val
+
+    mat_df = pd.DataFrame(mat, index=cols, columns=cols)
+    mat_df = mat_df.reindex(index=uids, columns=uids)
+    return mat_df
+
+
+# ---------------------------------------------------------------------------
+# BETA1 – Beta vs portfolio helpers
+# ---------------------------------------------------------------------------
+
+def _build_beta_vs_portfolio(
+    active_store: list,
+    weights_store: dict | None,
+    initial_equity: float,
+) -> tuple[pd.DataFrame | None, list[str] | None, list[str] | None, list[str] | None]:
+    """
+    Compute beta of each strategy's daily P&L versus the portfolio daily P&L.
+
+    Returns:
+      beta_df: DataFrame with columns ['uid', 'name', 'beta', 'r2']
+      uids: ordered list of strategy uids used
+      labels_full: names for each uid
+      axis_labels: labels for charts (short names or S1..Sn)
+    """
+    series = _build_portfolio_timeseries(
+        active_store=active_store or [],
+        weights_store=weights_store or {},
+        weight_mode="factors",
+        initial_equity=float(initial_equity or 100000.0),
+    )
+    if series is None:
+        return None, None, None, None
+
+    pnl_df: pd.DataFrame = series["pnl_df"].copy()
+    port: pd.Series = series["portfolio_daily"]
+    if pnl_df.empty:
+        return None, None, None, None
+
+    # Map uid -> name for selected strategies
+    uid_to_name: dict[str, str] = {}
+    active_store = active_store or []
+    for row in active_store:
+        if not row.get("is_selected", False):
+            continue
+        uid = row.get("uid")
+        if not uid:
+            continue
+        raw_name = row.get("name") or uid or row.get("sid")
+        uid_to_name[uid] = raw_name
+
+    uids = [uid for uid in pnl_df.columns if uid in uid_to_name]
+    if len(uids) < 1:
+        return None, None, None, None
+
+    labels_full = [uid_to_name[uid] for uid in uids]
+    labels_short: list[str] = []
+    for name in labels_full:
+        labels_short.append(name[:15] + "…" if len(name) > 15 else name)
+
+    codes = [f"S{i+1}" for i in range(len(uids))]
+    axis_labels = labels_short if len(uids) <= 10 else codes
+
+    betas = []
+    for uid in uids:
+        s = pnl_df[uid].astype(float)
+        df = pd.concat([s, port], axis=1, join="inner").dropna()
+        if df.shape[0] < 20:
+            betas.append((uid, uid_to_name[uid], np.nan, np.nan))
+            continue
+
+        x = df.iloc[:, 1].values  # portfolio
+        y = df.iloc[:, 0].values  # strategy
+
+        var_x = np.var(x)
+        if var_x == 0:
+            betas.append((uid, uid_to_name[uid], np.nan, np.nan))
+            continue
+
+        cov_xy = np.cov(x, y, ddof=0)[0, 1]
+        beta = cov_xy / var_x
+
+        try:
+            corr = np.corrcoef(x, y)[0, 1]
+            r2 = float(corr ** 2)
+        except Exception:
+            r2 = np.nan
+
+        betas.append((uid, uid_to_name[uid], float(beta), r2))
+
+    beta_df = pd.DataFrame(
+        betas, columns=["uid", "name", "beta", "r2"]
+    )
+    return beta_df, uids, labels_full, axis_labels
+
+
+def _beta_summary_table_component(beta_df: pd.DataFrame) -> html.Div:
+    """
+    Render a small HTML table with beta and R² values.
+    """
+    if beta_df is None or beta_df.empty:
+        return html.Div("No data to compute betas.", style={"color": "#AAAAAA"})
+
+    header = html.Thead(
+        html.Tr(
+            [
+                html.Th("Strategy", style={"textAlign": "left", "padding": "2px 4px"}),
+                html.Th("β vs PF", style={"textAlign": "right", "padding": "2px 4px"}),
+                html.Th("R²", style={"textAlign": "right", "padding": "2px 4px"}),
+            ]
+        )
+    )
+
+    body_rows = []
+    for _, row in beta_df.iterrows():
+        body_rows.append(
+            html.Tr(
+                [
+                    html.Td(row["name"], style={"padding": "2px 4px"}),
+                    html.Td(
+                        f"{row['beta']:.2f}" if pd.notnull(row["beta"]) else "—",
+                        style={"textAlign": "right", "padding": "2px 4px"},
+                    ),
+                    html.Td(
+                        f"{row['r2']:.2f}" if pd.notnull(row["r2"]) else "—",
+                        style={"textAlign": "right", "padding": "2px 4px"},
+                    ),
+                ]
+            )
+        )
+
+    table = html.Table(
+        [header, html.Tbody(body_rows)],
+        style={
+            "width": "100%",
+            "borderCollapse": "collapse",
+        },
+    )
+    return html.Div(table)
+
+
+# ---------------------------------------------------------------------------
+# SD1 – Serial dependence helpers (lag-1 autocorrelation)
+# ---------------------------------------------------------------------------
+
+def _build_serial_ac(
+    active_store: list,
+    weights_store: dict | None,
+    initial_equity: float,
+) -> tuple[pd.Series | None, list[str] | None, list[str] | None, list[str] | None]:
+    """
+    Compute lag-1 autocorrelation of daily P&L for each selected strategy.
+
+    Returns:
+      ac_series: Series indexed by uid with lag-1 autocorr
+      uids: ordered list of uids
+      labels_full: full names
+      axis_labels: labels for bar chart (short names or S1..Sn)
+    """
+    series = _build_portfolio_timeseries(
+        active_store=active_store or [],
+        weights_store=weights_store or {},
+        weight_mode="factors",
+        initial_equity=float(initial_equity or 100000.0),
+    )
+    if series is None:
+        return None, None, None, None
+
+    pnl_df: pd.DataFrame = series["pnl_df"].copy()
+    if pnl_df.empty:
+        return None, None, None, None
+
+    uid_to_name: dict[str, str] = {}
+    active_store = active_store or []
+    for row in active_store:
+        if not row.get("is_selected", False):
+            continue
+        uid = row.get("uid")
+        if not uid:
+            continue
+        raw_name = row.get("name") or uid or row.get("sid")
+        uid_to_name[uid] = raw_name
+
+    uids = [uid for uid in pnl_df.columns if uid in uid_to_name]
+    if len(uids) < 1:
+        return None, None, None, None
+
+    labels_full = [uid_to_name[uid] for uid in uids]
+    labels_short: list[str] = []
+    for name in labels_full:
+        labels_short.append(name[:15] + "…" if len(name) > 15 else name)
+
+    codes = [f"S{i+1}" for i in range(len(uids))]
+    axis_labels = labels_short if len(uids) <= 10 else codes
+
+    ac_values = {}
+    for uid in uids:
+        s = pnl_df[uid].astype(float).dropna()
+        if s.shape[0] < 20:
+            ac_values[uid] = np.nan
+            continue
+        try:
+            ac = float(s.autocorr(lag=1))
+        except Exception:
+            ac = np.nan
+        ac_values[uid] = ac
+
+    ac_series = pd.Series(ac_values)
+    return ac_series, uids, labels_full, axis_labels
+
 
 
 
@@ -2409,6 +2851,200 @@ def update_corr6_ddoverlap(
         zmax=1.0,
         zmid=0.5,
         zfmt=".2f",
+    )
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 – CORR7 callback (drawdown depth correlation)
+# ---------------------------------------------------------------------------
+
+@callback(
+    Output("p2-corr-dddepth-heatmap", "figure"),
+    Input("p1-active-list-store", "data"),
+    Input("p2-weights-store", "data"),
+    Input("p2-initial-equity-input", "value"),
+)
+def update_corr7_dddepth(
+    active_store,
+    weights_store,
+    initial_equity,
+):
+    """
+    Update CORR7 heatmap: correlation of drawdown depths between strategies,
+    computed only on days when both are in drawdown.
+    """
+    active_store = active_store or []
+    weights_store = weights_store or {}
+    initial_equity = float(initial_equity or 100000.0)
+
+    selected_rows = [r for r in active_store if r.get("is_selected")]
+    if len(selected_rows) < 2:
+        msg = "Select at least two strategies in the Active list to see drawdown depth correlation."
+        return _empty_corr_figure(msg)
+
+    corr_data = _build_corr_matrices(
+        active_store=active_store,
+        weights_store=weights_store,
+        initial_equity=initial_equity,
+    )
+    if corr_data is None:
+        msg = "No overlapping daily P&L data for selected strategies."
+        return _empty_corr_figure(msg)
+
+    uids = corr_data["uids"]
+    labels_full = corr_data["labels_full"]
+    labels_short = corr_data["labels_short"]
+    codes = corr_data["codes"]
+
+    ts_info = _build_portfolio_timeseries(
+        active_store=active_store,
+        weights_store=weights_store,
+        weight_mode="factors",
+        initial_equity=initial_equity,
+    )
+    if ts_info is None:
+        msg = "No overlapping daily P&L data for selected strategies."
+        return _empty_corr_figure(msg)
+
+    pnl_df: pd.DataFrame = ts_info["pnl_df"]
+    pnl_df = pnl_df[[uid for uid in uids if uid in pnl_df.columns]]
+
+    mat = _build_corr7_dddepth_matrix(pnl_df=pnl_df, uids=uids)
+    if mat is None or mat.empty:
+        msg = "Not enough joint drawdown days to compute correlations."
+        return _empty_corr_figure(msg)
+
+    n_strat = len(uids)
+    axis_labels = labels_short if n_strat <= 10 else codes
+
+    fig = _corr_heatmap_figure(
+        mat=mat,
+        uids=uids,
+        labels_axis=axis_labels,
+        labels_full=labels_full,
+        title="CORR7 – Drawdown depth correlation",
+        zmin=-1.0,
+        zmax=1.0,
+        zmid=0.0,
+        zfmt=".2f",
+    )
+    return fig
+
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 – BETA1 callback (beta vs portfolio)
+# ---------------------------------------------------------------------------
+
+@callback(
+    Output("p2-beta-portfolio-bar", "figure"),
+    Output("p2-beta-summary-table", "children"),
+    Input("p1-active-list-store", "data"),
+    Input("p2-weights-store", "data"),
+    Input("p2-initial-equity-input", "value"),
+)
+def update_beta_vs_portfolio(
+    active_store,
+    weights_store,
+    initial_equity,
+):
+    """
+    Update BETA1 bar chart and summary table: beta of each strategy's daily
+    P&L vs the portfolio daily P&L (current weights).
+    """
+    active_store = active_store or []
+    weights_store = weights_store or {}
+    initial_equity = float(initial_equity or 100000.0)
+
+    beta_df, uids, labels_full, axis_labels = _build_beta_vs_portfolio(
+        active_store=active_store,
+        weights_store=weights_store,
+        initial_equity=initial_equity,
+    )
+    if beta_df is None or uids is None:
+        fig = _empty_corr_figure("No data to compute betas.")
+        table = _beta_summary_table_component(pd.DataFrame())
+        return fig, table
+
+    x_labels = axis_labels
+    beta_vals = beta_df["beta"].astype(float).values
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=x_labels,
+            y=beta_vals,
+            customdata=beta_df["name"].values,
+            hovertemplate="Strategy: %{customdata}<br>β vs PF: %{y:.2f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="#222222",
+        plot_bgcolor="#222222",
+        font={"color": "#EEEEEE"},
+        margin=dict(l=40, r=20, t=40, b=60),
+        title="BETA1 – Beta vs portfolio",
+        xaxis=dict(title="Strategy"),
+        yaxis=dict(title="β vs portfolio", zeroline=True, zerolinewidth=1),
+    )
+
+    table = _beta_summary_table_component(beta_df)
+    return fig, table
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 – SD1 callback (serial dependence)
+# ---------------------------------------------------------------------------
+
+@callback(
+    Output("p2-serial-ac-bar", "figure"),
+    Input("p1-active-list-store", "data"),
+    Input("p2-weights-store", "data"),
+    Input("p2-initial-equity-input", "value"),
+)
+def update_serial_ac(
+    active_store,
+    weights_store,
+    initial_equity,
+):
+    """
+    Update SD1 bar chart: lag-1 autocorrelation of daily P&L per strategy.
+    """
+    active_store = active_store or []
+    weights_store = weights_store or {}
+    initial_equity = float(initial_equity or 100000.0)
+
+    ac_series, uids, labels_full, axis_labels = _build_serial_ac(
+        active_store=active_store,
+        weights_store=weights_store,
+        initial_equity=initial_equity,
+    )
+    if ac_series is None or uids is None:
+        return _empty_corr_figure("No data to compute serial dependence.")
+
+    y_vals = ac_series.reindex(uids).astype(float).values
+    x_labels = axis_labels
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=x_labels,
+            y=y_vals,
+            customdata=np.array(labels_full, dtype=object),
+            hovertemplate="Strategy: %{customdata}<br>AC(1): %{y:.2f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="#222222",
+        plot_bgcolor="#222222",
+        font={"color": "#EEEEEE"},
+        margin=dict(l=40, r=20, t=40, b=60),
+        title="SD1 – Serial dependence (lag-1 autocorrelation)",
+        xaxis=dict(title="Strategy"),
+        yaxis=dict(title="AC(1)", zeroline=True, zerolinewidth=1),
     )
     return fig
 

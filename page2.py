@@ -225,6 +225,107 @@ def build_phase2_right_panel():
                                             ],
                                             className="mb-2",
                                         ),
+                                        #here
+                                        # ---------------- Row 5: P&L Contribution Waterfall -------------------
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    html.Div(
+                                                        [
+                                                            html.Div(
+                                                                [
+                                                                    html.Span(
+                                                                        "P&L Contribution – Waterfall",
+                                                                        style={
+                                                                            "fontSize": "0.8rem",
+                                                                            "fontWeight": "bold",
+                                                                            "color": "#DDDDDD",
+                                                                        },
+                                                                    ),
+                                                                    html.Span(
+                                                                        " ⓘ",
+                                                                        title="Shows total weighted P&L contribution of each strategy. Toggle between absolute $ and % contribution.",
+                                                                        style={
+                                                                            "marginLeft": "0.35rem",
+                                                                            "cursor": "help",
+                                                                            "fontSize": "0.8rem",
+                                                                            "color": "#AAAAAA",
+                                                                        },
+                                                                    ),
+                                                                    dbc.ButtonGroup(
+                                                                        [
+                                                                            dbc.Button("ABS $", id="p2-contr-pnl-mode-abs", color="secondary", size="sm", outline=True),
+                                                                            dbc.Button("%", id="p2-contr-pnl-mode-pct", color="secondary", size="sm", outline=True),
+                                                                        ],
+                                                                        style={"marginLeft": "1rem"},
+                                                                    ),
+                                                                ],
+                                                                style={
+                                                                    "display": "flex",
+                                                                    "alignItems": "center",
+                                                                    "marginBottom": "0.35rem",
+                                                                },
+                                                            ),
+                                                            dcc.Graph(
+                                                                id="p2-contr-pnl-waterfall",
+                                                                figure={},
+                                                                style={"height": "360px"},
+                                                            ),
+                                                        ]
+                                                    ),
+                                                    md=12,
+                                                )
+                                            ],
+                                            className="mb-3",
+                                        ),
+                                        #here
+                                        # ---------------- Row 6: Drawdown Contribution Bars -------------------
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    html.Div(
+                                                        [
+                                                            html.Div(
+                                                                [
+                                                                    html.Span(
+                                                                        "DD Contribution – Weighted (DD-worsening days only)",
+                                                                        style={
+                                                                            "fontSize": "0.8rem",
+                                                                            "fontWeight": "bold",
+                                                                            "color": "#DDDDDD",
+                                                                        },
+                                                                    ),
+                                                                    html.Span(
+                                                                        " ⓘ",
+                                                                        title="Aggregates each strategy’s weighted contribution only on days where the PORTFOLIO drawdown increases. Highlights true DD drivers.",
+                                                                        style={
+                                                                            "marginLeft": "0.35rem",
+                                                                            "cursor": "help",
+                                                                            "fontSize": "0.8rem",
+                                                                            "color": "#AAAAAA",
+                                                                        },
+                                                                    ),
+                                                                ],
+                                                                style={
+                                                                    "display": "flex",
+                                                                    "alignItems": "center",
+                                                                    "marginBottom": "0.35rem",
+                                                                },
+                                                            ),
+                                                            dcc.Graph(
+                                                                id="p2-contr-dd-bars",
+                                                                figure={},
+                                                                style={"height": "360px"},
+                                                            ),
+                                                        ]
+                                                    ),
+                                                    md=12,
+                                                )
+                                            ],
+                                            className="mb-3",
+                                        ),
+
+
                                     ],
                                     style={
                                         "padding": "0.75rem",
@@ -1093,6 +1194,67 @@ def _build_portfolio_timeseries(
     }
 
 
+
+def _compute_pnl_contribution_from_series(series: dict) -> pd.Series:
+    """
+    From the _build_portfolio_timeseries output, compute weighted total P&L
+    contribution per strategy (absolute dollars).
+    """
+    if not series:
+        return pd.Series(dtype=float)
+
+    pnl_df: pd.DataFrame | None = series.get("pnl_df")
+    lots_vec = series.get("lots_vec")
+
+    if pnl_df is None or pnl_df.empty or lots_vec is None:
+        return pd.Series(dtype=float)
+
+    active_uids = list(pnl_df.columns)
+    lots = pd.Series(lots_vec, index=active_uids, dtype=float)
+
+    # Weighted daily P&L per strategy
+    weighted = pnl_df.mul(lots, axis=1)
+
+    # Absolute P&L contribution per strategy
+    return weighted.sum(axis=0)
+
+
+def _compute_dd_contribution_from_series(series: dict) -> pd.Series:
+    """
+    From the _build_portfolio_timeseries output, compute DD contribution per
+    strategy: sum of weighted P&L ONLY on days where the PORTFOLIO drawdown
+    deepens (dd diff > 0).
+    """
+    if not series:
+        return pd.Series(dtype=float)
+
+    pnl_df: pd.DataFrame | None = series.get("pnl_df")
+    lots_vec = series.get("lots_vec")
+    dd: pd.Series | None = series.get("dd")
+
+    if pnl_df is None or pnl_df.empty or lots_vec is None or dd is None or dd.empty:
+        return pd.Series(dtype=float)
+
+    active_uids = list(pnl_df.columns)
+    lots = pd.Series(lots_vec, index=active_uids, dtype=float)
+
+    # Weighted daily P&L per strategy
+    weighted = pnl_df.mul(lots, axis=1)
+
+    # Identify portfolio DD-worsening days
+    dd_delta = dd.diff().fillna(0.0)
+    dd_worsening = dd_delta > 0
+
+    if not dd_worsening.any():
+        # No DD worsening days – everything neutral
+        return pd.Series(0.0, index=active_uids, dtype=float)
+
+    # Sum contributions only on days where portfolio DD increases
+    dd_contrib = weighted[dd_worsening].sum(axis=0)
+
+    return dd_contrib
+
+
 # ---------------------------------------------------------------------------
 # Phase 2 – Portfolio Analytics callback
 # ---------------------------------------------------------------------------
@@ -1602,6 +1764,144 @@ def update_portfolio_analytics(
 
     return metrics_bar, equity_fig, dd_fig, dist_metrics, hist_fig, dow_fig
 
+#--------- Portfolio COntribution P&L and DD chart
+@callback(
+    Output("p2-contr-pnl-waterfall", "figure"),
+    Output("p2-contr-dd-bars", "figure"),
+    Input("p1-active-list-store", "data"),
+    Input("p2-weights-store", "data"),
+    Input("p2-initial-equity-input", "value"),
+    Input("p2-contr-pnl-mode", "value"),
+)
+def update_portfolio_contribution_charts(
+    active_store,
+    weights_store,
+    initial_equity,
+    pnl_mode,
+):
+    """
+    Build:
+      - P&L contribution waterfall (ABS / %)
+      - DD contribution horizontal bar chart
+    using the same portfolio engine as the main Analytics callback.
+    """
+
+    # Normalise inputs
+    active_store = active_store or []
+    weights_store = weights_store or {}
+    base_initial_equity = float(initial_equity or 100000.0)
+    pnl_mode = pnl_mode or "abs"
+
+    # Reuse the core engine (always 'factors' mode for Analytics)
+    series = _build_portfolio_timeseries(
+        active_store=active_store,
+        weights_store=weights_store,
+        weight_mode="factors",
+        initial_equity=base_initial_equity,
+    )
+
+    if series is None:
+        empty = _empty_corr_figure("No selected strategies.")
+        return empty, empty
+
+    pnl_df: pd.DataFrame = series["pnl_df"]
+    if pnl_df.empty or pnl_df.shape[1] < 1:
+        empty = _empty_corr_figure("No P&L data available.")
+        return empty, empty
+
+    # ---------- P&L contribution ----------
+    contr_abs = _compute_pnl_contribution_from_series(series)
+
+    # If all zero, avoid division by zero in % mode
+    if pnl_mode == "pct":
+        total = float(contr_abs.sum())
+        if abs(total) > 0:
+            contr_vals = contr_abs / total * 100.0
+        else:
+            contr_vals = contr_abs * 0.0
+        y_title_pnl = "% of total portfolio P&L"
+    else:
+        contr_vals = contr_abs
+        y_title_pnl = "Contribution to total P&L ($)"
+
+    # Labels: use strategy names from Active list, aligned to pnl_df columns
+    uid_to_name: dict[str, str] = {}
+    for row in active_store:
+        if not row.get("is_selected", False):
+            continue
+        uid = row.get("uid")
+        if not uid:
+            continue
+        raw_name = row.get("name") or uid or row.get("sid")
+        uid_to_name[uid] = raw_name
+
+    ordered_uids = [uid for uid in pnl_df.columns if uid in uid_to_name]
+    if not ordered_uids:
+        empty = _empty_corr_figure("No selected strategies with P&L data.")
+        return empty, empty
+
+    contr_vals = contr_vals.reindex(ordered_uids)
+    labels_full = [uid_to_name[u] for u in ordered_uids]
+
+    # Waterfall: one bar per strategy, final total
+    wf_x = labels_full + ["Total"]
+    wf_y = list(contr_vals.values) + [float(contr_vals.sum())]
+    measures = ["relative"] * len(contr_vals) + ["total"]
+
+    pnl_fig = go.Figure()
+    pnl_fig.add_trace(
+        go.Waterfall(
+            x=wf_x,
+            measure=measures,
+            y=wf_y,
+            increasing={"marker": {"color": "#2ECC71"}},
+            decreasing={"marker": {"color": "#E74C3C"}},
+            totals={"marker": {"color": "#5DADE2"}},
+            connector={"line": {"color": "#888888"}},
+        )
+    )
+    pnl_fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="#222222",
+        plot_bgcolor="#222222",
+        font={"color": "#EEEEEE"},
+        showlegend=False,
+        margin=dict(l=40, r=10, t=40, b=60),
+        yaxis_title=y_title_pnl,
+    )
+
+    # ---------- DD contribution (DD-worsening days only) ----------
+    dd_contrib = _compute_dd_contribution_from_series(series)
+    dd_contrib = dd_contrib.reindex(ordered_uids)
+
+    # Sort worst (most negative) to best
+    dd_contrib_sorted = dd_contrib.sort_values()
+
+    bar_colors = [
+        "#E74C3C" if v < 0 else "#2ECC71" for v in dd_contrib_sorted.values
+    ]
+
+    dd_fig = go.Figure()
+    dd_fig.add_trace(
+        go.Bar(
+            x=dd_contrib_sorted.values,
+            y=[uid_to_name[u] for u in dd_contrib_sorted.index],
+            orientation="h",
+            marker={"color": bar_colors},
+        )
+    )
+    dd_fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="#222222",
+        plot_bgcolor="#222222",
+        font={"color": "#EEEEEE"},
+        showlegend=False,
+        margin=dict(l=80, r=20, t=40, b=40),
+        xaxis_title="DD contribution on DD-worsening days ($)",
+    )
+
+    return pnl_fig, dd_fig
+
 
 # ---------------------------------------------------------------------------
 # Phase 2 – Correlation helpers (CORR1–CORR4)
@@ -1710,17 +2010,25 @@ def _build_corr_matrices(
             mask_down = (x_common < 0) & (y_common < 0)
             n_down = int(mask_down.sum())
             if n_down >= 3:
-                try:
-                    corr_down = float(
-                        np.corrcoef(
-                            x_common[mask_down].values,
-                            y_common[mask_down].values,
-                        )[0, 1]
-                    )
-                except Exception:
+                x_down = x_common[mask_down].astype(float)
+                y_down = y_common[mask_down].astype(float)
+
+                # Need at least 2 points and non-zero variance on both sides
+                if x_down.shape[0] >= 2:
+                    sx = float(x_down.std(ddof=0))
+                    sy = float(y_down.std(ddof=0))
+                    if sx > 0 and sy > 0:
+                        corr_down = float(
+                            np.corrcoef(x_down.values, y_down.values)[0, 1]
+                        )
+                    else:
+                        corr_down = np.nan
+                else:
                     corr_down = np.nan
+
                 downside.loc[c1, c2] = corr_down
                 downside.loc[c2, c1] = corr_down
+
 
             # Tail co-crash: both below own 5% quantile
             try:
@@ -2140,22 +2448,32 @@ def _build_corr5_vix_matrix(
             continue
 
         idx_b = mask.index[mask]
-        port_b = portfolio_daily.reindex(idx_b).astype(float)
-        pnl_b = pnl_df.reindex(idx_b)
-
-        if port_b.std(ddof=0) == 0:
-            continue
+        # Full series for this bucket (with possible NaNs)
+        port_b_full = portfolio_daily.reindex(idx_b).astype(float)
 
         for i, uid in enumerate(ordered_uids):
-            s = pnl_b[uid].astype(float)
-            if s.std(ddof=0) == 0:
+            # Strategy series for this bucket
+            s_full = pnl_df[uid].reindex(idx_b).astype(float)
+
+            # Drop any rows where either side is NaN
+            pair = pd.concat([s_full, port_b_full], axis=1).dropna()
+            if pair.shape[0] < 5:
                 corr_val = np.nan
             else:
-                try:
-                    corr_val = float(np.corrcoef(s.values, port_b.values)[0, 1])
-                except Exception:
+                x = pair.iloc[:, 0].values  # strategy
+                y = pair.iloc[:, 1].values  # portfolio
+
+                var_x = float(np.var(x))
+                var_y = float(np.var(y))
+                if var_x == 0.0 or var_y == 0.0:
                     corr_val = np.nan
+                else:
+                    cov_xy = float(np.cov(x, y, ddof=0)[0, 1])
+                    # Pearson correlation = cov / sqrt(var_x * var_y)
+                    corr_val = cov_xy / np.sqrt(var_x * var_y)
+
             data[i, b_idx] = corr_val
+
 
     corr = pd.DataFrame(
         data,
@@ -2359,19 +2677,28 @@ def _build_corr7_dddepth_matrix(pnl_df: pd.DataFrame, uids: list[str]) -> pd.Dat
             if n_both < 5:
                 val = np.nan
             else:
-                x = dd_i[mask_both].astype(float)
-                y = dd_j[mask_both].astype(float)
+                x_full = dd_i[mask_both].astype(float)
+                y_full = dd_j[mask_both].astype(float)
 
-                if x.std(ddof=0) == 0 or y.std(ddof=0) == 0:
+                # Drop any rows with NaNs in either series
+                pair = pd.concat([x_full, y_full], axis=1).dropna()
+                if pair.shape[0] < 2:
                     val = np.nan
                 else:
-                    try:
-                        val = float(np.corrcoef(x.values, y.values)[0, 1])
-                    except Exception:
+                    x = pair.iloc[:, 0].values
+                    y = pair.iloc[:, 1].values
+
+                    var_x = float(np.var(x))
+                    var_y = float(np.var(y))
+                    if var_x == 0.0 or var_y == 0.0:
                         val = np.nan
+                    else:
+                        cov_xy = float(np.cov(x, y, ddof=0)[0, 1])
+                        val = cov_xy / np.sqrt(var_x * var_y)
 
             mat[i, j] = val
             mat[j, i] = val
+
 
     mat_df = pd.DataFrame(mat, index=cols, columns=cols)
     mat_df = mat_df.reindex(index=uids, columns=uids)
@@ -2446,20 +2773,22 @@ def _build_beta_vs_portfolio(
         y = df.iloc[:, 0].values  # strategy
 
         var_x = np.var(x)
-        if var_x == 0:
+        var_y = np.var(y)
+
+        # If either side has zero variance, beta / R² are not meaningful
+        if var_x == 0 or var_y == 0:
             betas.append((uid, uid_to_name[uid], np.nan, np.nan))
             continue
 
         cov_xy = np.cov(x, y, ddof=0)[0, 1]
         beta = cov_xy / var_x
 
-        try:
-            corr = np.corrcoef(x, y)[0, 1]
-            r2 = float(corr ** 2)
-        except Exception:
-            r2 = np.nan
+        # R² via covariance / variance, without np.corrcoef
+        # corr^2 = cov_xy^2 / (var_x * var_y)
+        r2 = float((cov_xy ** 2) / (var_x * var_y))
 
         betas.append((uid, uid_to_name[uid], float(beta), r2))
+
 
     beta_df = pd.DataFrame(
         betas, columns=["uid", "name", "beta", "r2"]
@@ -2580,8 +2909,6 @@ def _build_serial_ac(
 
     ac_series = pd.Series(ac_values)
     return ac_series, uids, labels_full, axis_labels
-
-
 
 
 # ---------------------------------------------------------------------------

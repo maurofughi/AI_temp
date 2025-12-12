@@ -7,6 +7,8 @@ Created on Thu Dec 11 07:30:23 2025
 
 import numpy as np
 import pandas as pd
+from statistics import NormalDist  # for BCa
+
 
 from dash import callback, Input, Output, State, html
 import plotly.graph_objects as go
@@ -181,6 +183,83 @@ def _block_bootstrap_sample_pnl(pnl: np.ndarray, block_len: int, target_len: int
     return resampled.astype(float)
 
 
+
+def _bca_interval_maxdd(
+    pnl: np.ndarray,
+    eq0: float,
+    boot_maxdd: np.ndarray,
+    alpha: float = 0.05,
+) -> tuple[float, float]:
+    """
+    BCa confidence interval for Max DD (fraction, e.g. 0.2 = 20%).
+
+    Parameters
+    ----------
+    pnl : np.ndarray
+        Original daily P&L series.
+    eq0 : float
+        Initial equity.
+    boot_maxdd : np.ndarray
+        Bootstrap distribution of max drawdown fractions (same units as
+        _max_dd_from_pnl second return value).
+    alpha : float
+        1 - confidence level (0.05 => 95% interval).
+
+    Returns
+    -------
+    (low, high) : tuple[float, float]
+        BCa lower / upper bounds in *fraction* units.
+    """
+    boot = np.asarray(boot_maxdd, dtype=float)
+    boot = boot[np.isfinite(boot)]
+    if boot.size == 0 or pnl.size < 5 or eq0 <= 0:
+        # fall back to point estimate only
+        _, theta_hat = _max_dd_from_pnl(pnl, eq0)
+        return theta_hat, theta_hat
+
+    # Observed statistic on full series
+    _, theta_hat = _max_dd_from_pnl(pnl, eq0)
+
+    # ----- Bias-correction term z0 -----
+    prop_less = float(np.mean(boot < theta_hat))
+    # clamp away from exactly 0 or 1
+    eps = 1.0 / (2.0 * boot.size)
+    prop_less = min(max(prop_less, eps), 1.0 - eps)
+
+    nd = NormalDist()
+    z0 = nd.inv_cdf(prop_less)
+
+    # ----- Acceleration a via jackknife -----
+    n = pnl.size
+    theta_j = np.empty(n, dtype=float)
+    for i in range(n):
+        jack = np.delete(pnl, i)
+        _, theta_j[i] = _max_dd_from_pnl(jack, eq0)
+
+    theta_dot = float(theta_j.mean())
+    num = float(np.sum((theta_dot - theta_j) ** 3))
+    denom = float(6.0 * (np.sum((theta_dot - theta_j) ** 2) ** 1.5))
+    a = num / denom if denom != 0.0 else 0.0
+
+    def _bca_alpha(alpha_level: float) -> float:
+        z_alpha = nd.inv_cdf(alpha_level)
+        adj = z0 + (z0 + z_alpha) / (1.0 - a * (z0 + z_alpha))
+        return nd.cdf(adj)
+
+    alpha1 = alpha / 2.0
+    alpha2 = 1.0 - alpha / 2.0
+    p1 = _bca_alpha(alpha1)
+    p2 = _bca_alpha(alpha2)
+
+    low = float(np.quantile(boot, p1))
+    high = float(np.quantile(boot, p2))
+    return low, high
+
+
+def _bootstrap_distribution_from_pnl(pnl: pd.Series, n_sim: int, block_len: int, eq0: float):
+    ...
+
+
 def _bootstrap_distribution_from_pnl(pnl: pd.Series, n_sim: int, block_len: int, eq0: float):
     """
     Block bootstrap distribution based on daily P&L.
@@ -325,9 +404,6 @@ def _mc_distribution_empirical(
 
 
 
-
-
-
 def _hist_figure(
     data: np.ndarray,
     title: str,
@@ -336,15 +412,21 @@ def _hist_figure(
     orig_hover: str | None = None,
     p05: float | None = None,
     p95: float | None = None,
+    bca_low: float | None = None,
+    bca_high: float | None = None,
 ) -> go.Figure:
     """
-    Generic histogram with optional red 'Actual' vline and orange 5/95 percentile vlines.
-    Adds a small marker trace at the Actual value with a custom hover.
+    Generic histogram with:
+      - red 'Actual' vline + marker
+      - orange 5/95 percentile vlines
+      - OPTIONAL fuchsia BCa vlines (low / high)
     """
     fig = go.Figure()
+
     if data.size > 0:
         fig.add_trace(go.Histogram(x=data, nbinsx=40))
 
+    # Actual value
     if orig_value is not None:
         fig.add_vline(
             x=float(orig_value),
@@ -361,11 +443,12 @@ def _hist_figure(
                 mode="markers",
                 marker=dict(color="red", size=8),
                 name="Actual",
-                hovertemplate=hover_text + "<extra></extra>",
+                hovertemplate=hover_text + "",
                 showlegend=False,
             )
         )
 
+    # 5 / 95 percentiles (naive)
     if p05 is not None:
         fig.add_vline(
             x=float(p05),
@@ -385,6 +468,26 @@ def _hist_figure(
             annotation_position="bottom right",
         )
 
+    # BCa interval (fuchsia)
+    if bca_low is not None:
+        fig.add_vline(
+            x=float(bca_low),
+            line_color="magenta",
+            line_width=1,
+            line_dash="dot",
+            annotation_text="BCa low",
+            annotation_position="top left",
+        )
+    if bca_high is not None:
+        fig.add_vline(
+            x=float(bca_high),
+            line_color="magenta",
+            line_width=1,
+            line_dash="dot",
+            annotation_text="BCa high",
+            annotation_position="top right",
+        )
+
     fig.update_layout(
         template="plotly_dark",
         paper_bgcolor="#222222",
@@ -396,6 +499,7 @@ def _hist_figure(
         yaxis_title="Count",
     )
     return fig
+
 
 
 def _ecdf_figure(
@@ -463,7 +567,10 @@ def _metrics_table_bootstrap(
     actual_maxdd_pct: float,
     actual_maxdd_abs: float,
     actual_sharpe: float,
+    maxdd_bca_low: float | None = None,
+    maxdd_bca_high: float | None = None,
 ) -> html.Div:
+
     if sharpe_vals.size == 0:
         return html.Div("No bootstrap results.", style={"color": "#AAAAAA"})
 
@@ -494,6 +601,16 @@ def _metrics_table_bootstrap(
     maxdd_p95 = float(np.percentile(maxdd_pct_vals, 95))
     rows.append(("Max DD (median, %)", f"{pct(maxdd_med):.1f}%"))
     rows.append(("Max DD 95% worst, %", f"{pct(maxdd_p95):.1f}%"))
+    
+    # BCa interval for Max DD (if available)
+    if (maxdd_bca_low is not None) and (maxdd_bca_high is not None):
+        rows.append(
+            (
+                "Max DD 95% BCa, %",
+                f"{pct(maxdd_bca_low):.1f}% / {pct(maxdd_bca_high):.1f}%",
+            )
+        )
+
 
     fin_med = float(np.median(final_ret_vals))
     fin_p05 = float(np.percentile(final_ret_vals, 5))
@@ -753,7 +870,183 @@ def _metrics_table_mc(
     )
 
 
+def _window_metrics_from_pnl(pnl_window: np.ndarray, eq0: float) -> tuple[float, float, int]:
+    """
+    Returns:
+      total_pnl ($), max_dd_pct (fraction, e.g. 0.12), dd_duration_days (int)
 
+    DD duration here = days between the peak and the trough that define the maximum drawdown.
+    """
+    pnl_window = np.asarray(pnl_window, dtype=float)
+    if pnl_window.size == 0 or eq0 <= 0:
+        return 0.0, 0.0, 0
+
+    eq = eq0 + np.cumsum(pnl_window)
+
+    running_max = np.maximum.accumulate(eq)
+    dd = (running_max - eq) / running_max  # fraction
+    max_dd = float(dd.max()) if dd.size else 0.0
+
+    # dd duration: peak index -> trough index for the max DD event
+    trough_idx = int(np.argmax(dd)) if dd.size else 0
+    peak_idx = int(np.argmax(eq[: trough_idx + 1])) if trough_idx > 0 else 0
+    dd_dur = int(max(0, trough_idx - peak_idx))
+
+    return float(pnl_window.sum()), max_dd, dd_dur
+
+def _random_start_date_analysis(
+    daily_pnl: pd.Series,
+    months: int,
+    n_periods: int,
+    eq0: float,
+    no_overlap: bool = False,
+    seed: int | None = None,
+) -> dict:
+    """
+    daily_pnl: pd.Series indexed by datetime-like, values are DAILY $ P&L.
+    months: window length in calendar months (uses pd.DateOffset).
+    n_periods: number of random windows
+    eq0: initial equity used to compute DD%
+    no_overlap: best-effort to avoid overlapping windows
+    """
+    s = daily_pnl.dropna()
+    s = s.sort_index()
+    if s.empty:
+        return {"rows": [], "error": "Empty portfolio daily P&L series."}
+
+    # Determine eligible start dates where start+months <= last date
+    last_dt = s.index.max()
+    offset = pd.DateOffset(months=int(months))
+
+    eligible = []
+    for dt in s.index:
+        if dt + offset <= last_dt:
+            eligible.append(dt)
+
+    if not eligible:
+        return {"rows": [], "error": "No eligible start dates for the requested window length."}
+
+    rng = np.random.default_rng(seed)
+    rows = []
+
+    used_intervals = []  # list of (start, end) for overlap screening
+
+    attempts = 0
+    max_attempts = max(2000, n_periods * 50)
+
+    while len(rows) < n_periods and attempts < max_attempts:
+        attempts += 1
+        start = eligible[int(rng.integers(0, len(eligible)))]
+        end = start + offset
+
+        if no_overlap:
+            # reject if overlap with any previously accepted interval (best effort)
+            overlap = False
+            for (s0, e0) in used_intervals:
+                if not (end < s0 or start > e0):
+                    overlap = True
+                    break
+            if overlap:
+                continue
+
+        w = s.loc[(s.index >= start) & (s.index <= end)]
+        if w.size < 10:
+            continue
+
+        total_pnl, max_dd, dd_dur = _window_metrics_from_pnl(w.values, eq0)
+
+        rows.append(
+            {
+                "start": start,
+                "end": w.index.max(),
+                "days": int(w.size),
+                "total_pnl": float(total_pnl),
+                "ret_pct": float(total_pnl / eq0) if eq0 > 0 else 0.0,
+                "max_dd": float(max_dd),  # fraction
+                "dd_dur": int(dd_dur),
+            }
+        )
+
+        if no_overlap:
+            used_intervals.append((start, w.index.max()))
+
+    if len(rows) < n_periods:
+        return {"rows": rows, "error": f"Only generated {len(rows)} windows (requested {n_periods})."}
+
+    return {"rows": rows, "error": None}
+
+
+def _randstart_figure(rows: list[dict]) -> go.Figure:
+    fig = go.Figure()
+
+    if not rows:
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="#222222",
+            plot_bgcolor="#222222",
+            font={"color": "#EEEEEE"},
+            title={"text": "Random start-date analysis", "x": 0.01, "xanchor": "left"},
+            xaxis={"title": "Period"},
+            yaxis={"title": "Total P&L ($)"},
+        )
+        return fig
+
+    x = [f"P{i+1}" for i in range(len(rows))]
+    pnl = [r["total_pnl"] for r in rows]
+    maxdd_pct = [r["max_dd"] * 100.0 for r in rows]
+
+    hover = [
+        f"Start: {r['start'].date()}<br>"
+        f"End: {r['end'].date()}<br>"
+        f"Days: {r['days']}<br>"
+        f"Total P&L: ${r['total_pnl']:,.0f}<br>"
+        f"Return: {r['ret_pct']*100:.1f}%<br>"
+        f"Max DD: {r['max_dd']*100:.1f}%<br>"
+        f"DD duration: {r['dd_dur']} days"
+        for r in rows
+    ]
+
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=pnl,
+            mode="lines+markers",
+            name="Total P&L ($)",
+            hovertext=hover,
+            hoverinfo="text",
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=maxdd_pct,
+            mode="lines+markers",
+            name="Max drawdown (%)",
+            yaxis="y2",
+            hovertext=hover,
+            hoverinfo="text",
+        )
+    )
+
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="#222222",
+        plot_bgcolor="#222222",
+        font={"color": "#EEEEEE"},
+        title={"text": "Random start-date analysis (contiguous windows)", "x": 0.01, "xanchor": "left"},
+        xaxis={"title": "Random window index"},
+        yaxis={"title": "Total P&L ($)"},
+        yaxis2={
+            "title": "Max drawdown (%)",
+            "overlaying": "y",
+            "side": "right",
+            "showgrid": False,
+        },
+        legend={"orientation": "h", "y": -0.2},
+        margin=dict(l=60, r=60, t=50, b=60),
+    )
+    return fig
 
 
 # ---------------------------------------------------------------------------
@@ -843,6 +1136,15 @@ def run_portfolio_bootstrap(
         worst_block_pct_vals,
         final_equity_vals,
     ) = _bootstrap_distribution_from_pnl(pnl, n_sim, block_len, eq0)
+    
+    # BCa 95% interval for Max DD (fraction units, e.g. 0.2 = 20%)
+    try:
+        maxdd_bca_low, maxdd_bca_high = _bca_interval_maxdd(
+            pnl_arr, eq0, maxdd_pct_vals
+        )
+    except Exception:
+        maxdd_bca_low, maxdd_bca_high = None, None
+
 
     # Histograms with Actual + 5/95 vlines
     sharpe_fig = _hist_figure(
@@ -855,6 +1157,9 @@ def run_portfolio_bootstrap(
         p95=float(np.percentile(sharpe_vals, 95)),
     )
     maxdd_percent = maxdd_pct_vals * 100.0
+    bca_low_pct = maxdd_bca_low * 100.0 if maxdd_bca_low is not None else None
+    bca_high_pct = maxdd_bca_high * 100.0 if maxdd_bca_high is not None else None
+
     maxdd_fig = _hist_figure(
         maxdd_percent,
         "Bootstrap – Max drawdown distribution",
@@ -863,7 +1168,10 @@ def run_portfolio_bootstrap(
         orig_hover=f"Actual Max DD: {actual_maxdd_pct * 100.0:.1f}%",
         p05=float(np.percentile(maxdd_percent, 5)),
         p95=float(np.percentile(maxdd_percent, 95)),
+        bca_low=bca_low_pct,
+        bca_high=bca_high_pct,
     )
+
     maxblock_percent = worst_block_pct_vals * 100.0
     maxblock_fig = _hist_figure(
         maxblock_percent,
@@ -901,7 +1209,10 @@ def run_portfolio_bootstrap(
         actual_maxdd_pct,
         actual_maxdd_abs,
         actual_sharpe,
+        maxdd_bca_low=maxdd_bca_low,
+        maxdd_bca_high=maxdd_bca_high,
     )
+
 
     status_msg = f"Bootstrap completed: {n_sim} runs, block length = {block_len} days."
 
@@ -1251,4 +1562,72 @@ def run_portfolio_mc(
         metrics,
         status_msg,
     )
+
+
+@callback(
+    Output("p2-randstart-fig", "figure"),
+    Output("p2-randstart-status", "children"),
+    Input("p2-randstart-run-btn", "n_clicks"),
+    State("p2-randstart-n-periods", "value"),
+    State("p2-randstart-months", "value"),
+    State("p2-randstart-no-overlap", "value"),
+    State("p2-initial-equity-input", "value"),
+    State("p2-weights-store", "data"),      # <-- must match your existing weights store ID
+    State("p2-weight-mode", "value"),       # <-- must match your existing weight-mode control ID
+    State("p2-strategy-checklist", "value"),# <-- must match your existing Page 2 strategy selector ID
+    prevent_initial_call=True,
+)
+def run_random_start_date_analysis(
+    n_clicks,
+    n_periods,
+    months,
+    no_overlap_val,
+    eq0,
+    weights_store,
+    weight_mode,
+    selected_strategy_ids,
+):
+
+    # Defensive defaults
+    n_periods = int(n_periods or 50)
+    months = int(months or 6)
+    eq0 = float(eq0 or 100000.0)
+    no_overlap = bool(no_overlap_val) and ("no_overlap" in no_overlap_val)
+
+    if not selected_strategy_ids:
+        return go.Figure(), "Select at least one strategy."
+
+    # Reuse your portfolio builder (same as Bootstrap/MC)
+    # This must return a daily P&L series (dollars) indexed by date.
+    ts = _build_portfolio_timeseries(
+        selected_strategy_ids,
+        weights_store,
+        weight_mode,
+        eq0,
+    )
+    
+    # Your helper returns a dict in page2 usage; portfolio daily $ P&L must be in one of these keys.
+    if isinstance(ts, dict):
+        if "portfolio_daily" in ts:
+            daily_pnl = ts["portfolio_daily"]
+        elif "daily_pnl" in ts:
+            daily_pnl = ts["daily_pnl"]
+        else:
+            return go.Figure(), "ERROR: _build_portfolio_timeseries did not return a daily P&L series key."
+    else:
+        daily_pnl = ts
+
+    
+    out = _random_start_date_analysis(
+        daily_pnl=daily_pnl,
+        months=months,
+        n_periods=n_periods,
+        eq0=eq0,
+        no_overlap=no_overlap,
+        seed=None,
+    )
+
+    fig = _randstart_figure(out["rows"])
+    msg = out["error"] or f"Generated {len(out['rows'])} windows of {months} months."
+    return fig, msg
 

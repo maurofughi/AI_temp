@@ -226,7 +226,7 @@ def build_phase2_right_panel():
                                             className="mb-2",
                                         ),
                                         #here
-                                        # ---------------- Row 5: P&L Contribution Waterfall -------------------
+                                        # ---------------- Row: P&L Contribution Waterfall -------------------
                                         dbc.Row(
                                             [
                                                 dbc.Col(
@@ -244,7 +244,11 @@ def build_phase2_right_panel():
                                                                     ),
                                                                     html.Span(
                                                                         " ⓘ",
-                                                                        title="Shows total weighted P&L contribution of each strategy. Toggle between absolute $ and % contribution.",
+                                                                        title=(
+                                                                            "Shows total weighted P&L contribution "
+                                                                            "of each strategy to the portfolio. "
+                                                                            "Toggle between absolute $ and % of total."
+                                                                        ),
                                                                         style={
                                                                             "marginLeft": "0.35rem",
                                                                             "cursor": "help",
@@ -252,34 +256,44 @@ def build_phase2_right_panel():
                                                                             "color": "#AAAAAA",
                                                                         },
                                                                     ),
-                                                                    dbc.ButtonGroup(
-                                                                        [
-                                                                            dbc.Button("ABS $", id="p2-contr-pnl-mode-abs", color="secondary", size="sm", outline=True),
-                                                                            dbc.Button("%", id="p2-contr-pnl-mode-pct", color="secondary", size="sm", outline=True),
+                                                                    dcc.RadioItems(
+                                                                        id="p2-contr-pnl-mode",
+                                                                        options=[
+                                                                            {"label": " ABS $", "value": "abs"},
+                                                                            {"label": " % of total", "value": "pct"},
                                                                         ],
-                                                                        style={"marginLeft": "1rem"},
+                                                                        value="abs",
+                                                                        inline=True,
+                                                                        labelStyle={"marginRight": "0.75rem"},
+                                                                        style={
+                                                                            "marginLeft": "1.0rem",
+                                                                            "fontSize": "0.85rem",
+                                                                        },
                                                                     ),
                                                                 ],
                                                                 style={
                                                                     "display": "flex",
                                                                     "alignItems": "center",
+                                                                    "gap": "0.5rem",
                                                                     "marginBottom": "0.35rem",
                                                                 },
                                                             ),
                                                             dcc.Graph(
                                                                 id="p2-contr-pnl-waterfall",
-                                                                figure={},
-                                                                style={"height": "360px"},
+                                                                figure=_empty_corr_figure(
+                                                                    "Select strategies to see P&L contribution."
+                                                                ),
+                                                                style={"height": "340px"},
                                                             ),
                                                         ]
                                                     ),
                                                     md=12,
-                                                )
+                                                ),
                                             ],
-                                            className="mb-3",
+                                            className="mb-2",
                                         ),
-                                        #here
-                                        # ---------------- Row 6: Drawdown Contribution Bars -------------------
+                                        
+                                        # ---------------- Row: DD Contribution Bars -------------------
                                         dbc.Row(
                                             [
                                                 dbc.Col(
@@ -297,7 +311,11 @@ def build_phase2_right_panel():
                                                                     ),
                                                                     html.Span(
                                                                         " ⓘ",
-                                                                        title="Aggregates each strategy’s weighted contribution only on days where the PORTFOLIO drawdown increases. Highlights true DD drivers.",
+                                                                        title=(
+                                                                            "Aggregates each strategy’s weighted P&L "
+                                                                            "only on days where the PORTFOLIO drawdown increases. "
+                                                                            "Highlights true DD drivers vs stabilisers."
+                                                                        ),
                                                                         style={
                                                                             "marginLeft": "0.35rem",
                                                                             "cursor": "help",
@@ -309,18 +327,21 @@ def build_phase2_right_panel():
                                                                 style={
                                                                     "display": "flex",
                                                                     "alignItems": "center",
+                                                                    "gap": "0.5rem",
                                                                     "marginBottom": "0.35rem",
                                                                 },
                                                             ),
                                                             dcc.Graph(
                                                                 id="p2-contr-dd-bars",
-                                                                figure={},
-                                                                style={"height": "360px"},
+                                                                figure=_empty_corr_figure(
+                                                                    "Select strategies to see DD contributions."
+                                                                ),
+                                                                style={"height": "340px"},
                                                             ),
                                                         ]
                                                     ),
                                                     md=12,
-                                                )
+                                                ),
                                             ],
                                             className="mb-3",
                                         ),
@@ -941,7 +962,614 @@ def build_phase2_right_panel():
                                     style={"padding": "0.75rem", "fontSize": "0.85rem"},
                                 ),
                             ),
+                            # ------------------------------------------------------------------
+                            # TAB – Portfolio Robustness (new)
+                            # ------------------------------------------------------------------
+                            dcc.Tab(
+                                label="Robustness",
+                                value="p2-robustness",
+                                style={
+                                    "backgroundColor": "#333333",
+                                    "color": "#BBBBBB",
+                                    "padding": "8px 12px",
+                                },
+                                selected_style={
+                                    "backgroundColor": "#555555",
+                                    "color": "#FFFFFF",
+                                    "padding": "8px 12px",
+                                },
+                                children=html.Div(
+                                    [
+                                        # Short explanation
+                                        html.Div(
+                                            [
+                                                html.Span(
+                                                    "Robustness analysis on portfolio daily P&L (current factors / weights).",
+                                                    style={
+                                                        "fontSize": "0.8rem",
+                                                        "color": "#DDDDDD",
+                                                    },
+                                                ),
+                                                html.Br(),
+                                                html.Span(
+                                                    "Runs block bootstrap and Monte Carlo on portfolio daily returns, "
+                                                    "similar to Phase 1 Overfitting but at portfolio level.",
+                                                    style={
+                                                        "fontSize": "0.75rem",
+                                                        "color": "#AAAAAA",
+                                                    },
+                                                ),
+                                            ],
+                                            style={"marginBottom": "0.75rem"},
+                                        ),
+                            
+                                        # ------------------------------------------------------------------
+                                        # Controls row – Bootstrap (left) and MC (right)
+                                        # ------------------------------------------------------------------
+                                        dbc.Row(
+                                            [
+                                                # BOOTSTRAP CONTROLS
+                                                dbc.Col(
+                                                    html.Div(
+                                                        [
+                                                            html.Div(
+                                                                [
+                                                                    html.Span(
+                                                                        "BOOT – Block bootstrap on daily returns",
+                                                                        style={
+                                                                            "fontSize": "0.8rem",
+                                                                            "fontWeight": "bold",
+                                                                            "color": "#DDDDDD",
+                                                                        },
+                                                                    ),
+                                                                    html.Span(
+                                                                        " ⓘ",
+                                                                        title=(
+                                                                            "Resamples blocks of consecutive daily portfolio returns "
+                                                                            "to preserve streaks. Produces a distribution of Sharpe, "
+                                                                            "Max DD and final return."
+                                                                        ),
+                                                                        style={
+                                                                            "marginLeft": "0.35rem",
+                                                                            "cursor": "help",
+                                                                            "fontSize": "0.8rem",
+                                                                            "color": "#AAAAAA",
+                                                                        },
+                                                                    ),
+                                                                ],
+                                                                style={
+                                                                    "display": "flex",
+                                                                    "alignItems": "center",
+                                                                    "marginBottom": "0.35rem",
+                                                                },
+                                                            ),
+                                                            dbc.Row(
+                                                                [
+                                                                    dbc.Col(
+                                                                        [
+                                                                            html.Label(
+                                                                                "Bootstrap runs",
+                                                                                style={
+                                                                                    "fontSize": "0.75rem",
+                                                                                    "color": "#CCCCCC",
+                                                                                },
+                                                                            ),
+                                                                            dcc.Input(
+                                                                                id="p2-robust-boot-n-sim",
+                                                                                type="number",
+                                                                                min=100,
+                                                                                step=100,
+                                                                                value=2000,
+                                                                                style={
+                                                                                    "width": "70px",
+                                                                                    "fontSize": "0.75rem",
+                                                                                    "backgroundColor": "#2a2a2a",
+                                                                                    "color": "#EEEEEE",
+                                                                                    "border": "1px solid #555555",
+                                                                                },
+                                                                            ),
+                                                                        ],
+                                                                        md=3,
+                                                                    ),
+                                                                    dbc.Col(
+                                                                        [
+                                                                            html.Label(
+                                                                                "Block length (days)",
+                                                                                style={
+                                                                                    "fontSize": "0.75rem",
+                                                                                    "color": "#CCCCCC",
+                                                                                },
+                                                                            ),
+                                                                            dcc.Input(
+                                                                                id="p2-robust-boot-block-len",
+                                                                                type="number",
+                                                                                min=1,
+                                                                                step=1,
+                                                                                value=5,
+                                                                                style={
+                                                                                    "width": "50px",
+                                                                                    "fontSize": "0.75rem",
+                                                                                    "backgroundColor": "#2a2a2a",
+                                                                                    "color": "#EEEEEE",
+                                                                                    "border": "1px solid #555555",
+                                                                                },
+                                                                            ),
+                                                                        ],
+                                                                        md=3,
+                                                                    ),
+                                                                    dbc.Col(
+                                                                        html.Div(
+                                                                            [
+                                                                                html.Label(
+                                                                                    "Initial equity ($)",
+                                                                                    style={"fontSize": "0.8rem", "marginBottom": "0.1rem"},
+                                                                                ),
+                                                                                dcc.Input(
+                                                                                    id="p2-initial-equity-input",
+                                                                                    type="number",
+                                                                                    value=100000,
+                                                                                    min=0,
+                                                                                    step=1000,
+                                                                                    style={
+                                                                                        "width": "70%",
+                                                                                        "backgroundColor": "#333333",
+                                                                                        "color": "#FFFFFF",
+                                                                                        "border": "1px solid #555555",
+                                                                                    },
+                                                                                ),
+                                                                            ]
+                                                                        ),
+                                                                        md=3,
+                                                                    ),
+                                                                    dbc.Col(
+                                                                        html.Div(
+                                                                            [
+                                                                                html.Label(
+                                                                                    "Ruin threshold ($)",
+                                                                                    style={"fontSize": "0.8rem", "marginBottom": "0.1rem"},
+                                                                                ),
+                                                                                dcc.Input(
+                                                                                    id="p2-robust-ruin-threshold",
+                                                                                    type="number",
+                                                                                    value=100000,
+                                                                                    step=1000,
+                                                                                    style={
+                                                                                        "width": "70%",
+                                                                                        "backgroundColor": "#333333",
+                                                                                        "color": "#FFFFFF",
+                                                                                        "border": "1px solid #555555",
+                                                                                    },
+                                                                                ),
+                                                                            ]
+                                                                        ),
+                                                                        md=3,
+                                                                    ),
 
+                                                                ],
+                                                                className="mb-2",
+                                                            ),
+                                                            dbc.Button(
+                                                                "Run Bootstrap",
+                                                                id="p2-robust-boot-run-btn",
+                                                                n_clicks=0,
+                                                                color="primary",
+                                                                size="sm",
+                                                            ),
+                                                            html.Div(
+                                                                id="p2-robust-boot-status",
+                                                                style={
+                                                                    "marginTop": "0.35rem",
+                                                                    "fontSize": "0.75rem",
+                                                                    "color": "#AAAAAA",
+                                                                },
+                                                            ),
+                                                        ]
+                                                    ),
+                                                    md=6,
+                                                ),
+                            
+                                                # MONTE CARLO CONTROLS
+                                                dbc.Col(
+                                                    html.Div(
+                                                        [
+                                                            html.Div(
+                                                                [
+                                                                    html.Span(
+                                                                        "MC – Monte Carlo on daily returns (Gaussian)",
+                                                                        style={
+                                                                            "fontSize": "0.8rem",
+                                                                            "fontWeight": "bold",
+                                                                            "color": "#DDDDDD",
+                                                                        },
+                                                                    ),
+                                                                    html.Span(
+                                                                        " ⓘ",
+                                                                        title=(
+                                                                            "Simulates portfolio equity paths by drawing daily returns "
+                                                                            "from a Gaussian calibrated on historical portfolio returns. "
+                                                                            "Used for final equity and drawdown risk distribution."
+                                                                        ),
+                                                                        style={
+                                                                            "marginLeft": "0.35rem",
+                                                                            "cursor": "help",
+                                                                            "fontSize": "0.8rem",
+                                                                            "color": "#AAAAAA",
+                                                                        },
+                                                                    ),
+                                                                ],
+                                                                style={
+                                                                    "display": "flex",
+                                                                    "alignItems": "center",
+                                                                    "marginBottom": "0.35rem",
+                                                                },
+                                                            ),
+                                                            dbc.Row(
+                                                                [
+                                                                    dbc.Col(
+                                                                        [
+                                                                            html.Label(
+                                                                                "Number of MC paths",
+                                                                                style={
+                                                                                    "fontSize": "0.75rem",
+                                                                                    "color": "#CCCCCC",
+                                                                                },
+                                                                            ),
+                                                                            dcc.Input(
+                                                                                id="p2-robust-mc-n-sim",
+                                                                                type="number",
+                                                                                min=100,
+                                                                                step=100,
+                                                                                value=5000,
+                                                                                style={
+                                                                                    "width": "70px",
+                                                                                    "fontSize": "0.75rem",
+                                                                                    "backgroundColor": "#2a2a2a",
+                                                                                    "color": "#EEEEEE",
+                                                                                    "border": "1px solid #555555",
+                                                                                },
+                                                                            ),
+                                                                        ],
+                                                                        md=4,
+                                                                    ),
+                                                                    dbc.Col(
+                                                                        [
+                                                                            html.Label(
+                                                                                "Horizon (days, 0 = use sample length)",
+                                                                                style={
+                                                                                    "fontSize": "0.75rem",
+                                                                                    "color": "#CCCCCC",
+                                                                                },
+                                                                            ),
+                                                                            dcc.Input(
+                                                                                id="p2-robust-mc-horizon-days",
+                                                                                type="number",
+                                                                                min=0,
+                                                                                step=10,
+                                                                                value=0,
+                                                                                style={
+                                                                                    "width": "50px",
+                                                                                    "fontSize": "0.75rem",
+                                                                                    "backgroundColor": "#2a2a2a",
+                                                                                    "color": "#EEEEEE",
+                                                                                    "border": "1px solid #555555",
+                                                                                },
+                                                                            ),
+                                                                        ],
+                                                                        md=5,
+                                                                    ),
+                                                                ],
+                                                                className="mb-2",
+                                                            ),
+                                                            dbc.Button(
+                                                                "Run Monte Carlo",
+                                                                id="p2-robust-mc-run-btn",
+                                                                n_clicks=0,
+                                                                color="primary",
+                                                                size="sm",
+                                                            ),
+                                                            html.Div(
+                                                                id="p2-robust-mc-status",
+                                                                style={
+                                                                    "marginTop": "0.35rem",
+                                                                    "fontSize": "0.75rem",
+                                                                    "color": "#AAAAAA",
+                                                                },
+                                                            ),
+                                                        ]
+                                                    ),
+                                                    md=6,
+                                                ),
+                                            ],
+                                            className="mb-3",
+                                        ),
+                            
+                                        html.Hr(
+                                            style={
+                                                "marginTop": "0.25rem",
+                                                "marginBottom": "0.75rem",
+                                            }
+                                        ),
+                            
+                                        # ------------------------------------------------------------------
+                                        # Bootstrap charts + metrics
+                                        # ------------------------------------------------------------------
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    dcc.Graph(
+                                                        id="p2-robust-boot-sharpe-hist",
+                                                        figure={},
+                                                        style={"height": "280px"},
+                                                    ),
+                                                    md=6,
+                                                ),
+                                                dbc.Col(
+                                                    dcc.Graph(
+                                                        id="p2-robust-boot-maxdd-hist",
+                                                        figure={},
+                                                        style={"height": "280px"},
+                                                    ),
+                                                    md=6,
+                                                ),
+                                            ],
+                                            className="mb-2",
+                                        ),
+                                        
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    dcc.Graph(
+                                                        id="p2-robust-boot-maxblock-hist",
+                                                        figure={},
+                                                        style={"height": "260px"},
+                                                    ),
+                                                    md=6,
+                                                ),
+                                                dbc.Col(
+                                                    html.Div(
+                                                        id="p2-robust-boot-metrics-table",
+                                                        style={
+                                                            "fontSize": "0.8rem",
+                                                            "backgroundColor": "#222222",
+                                                            "border": "1px solid #444444",
+                                                            "padding": "0.5rem",
+                                                            "maxHeight": "260px",
+                                                            "overflowY": "auto",
+                                                        },
+                                                    ),
+                                                    md=6,
+                                                ),
+                                            ],
+                                            className="mb-3",
+                                        ),
+
+                                        
+                                        # NEW: ECDF charts for Ending Equity and Max DD
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    dcc.Graph(
+                                                        id="p2-robust-boot-final-ecdf",
+                                                        figure={},
+                                                        style={"height": "260px"},
+                                                    ),
+                                                    md=6,
+                                                ),
+                                                dbc.Col(
+                                                    dcc.Graph(
+                                                        id="p2-robust-boot-maxdd-ecdf",
+                                                        figure={},
+                                                        style={"height": "260px"},
+                                                    ),
+                                                    md=6,
+                                                ),
+                                            ],
+                                            className="mb-3",
+                                        ),
+
+                            
+                                        html.Hr(
+                                            style={
+                                                "marginTop": "0.25rem",
+                                                "marginBottom": "0.75rem",
+                                            }
+                                        ),
+                            
+                                        # ------------------------------------------------------------------
+                                        # MC charts + metrics
+                                        # ------------------------------------------------------------------
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    dcc.Graph(
+                                                        id="p2-robust-mc-final-equity-hist",
+                                                        figure={},
+                                                        style={"height": "280px"},
+                                                    ),
+                                                    md=6,
+                                                ),
+                                                dbc.Col(
+                                                    dcc.Graph(
+                                                        id="p2-robust-mc-maxdd-hist",
+                                                        figure={},
+                                                        style={"height": "280px"},
+                                                    ),
+                                                    md=6,
+                                                ),
+                                            ],
+                                            className="mb-2",
+                                        ),
+                                        #here
+                                        # Row 5: MC fan chart + metrics table
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    dcc.Graph(
+                                                        id="p2-robust-mc-fan-chart",
+                                                        figure={},
+                                                        style={"height": "320px"},
+                                                    ),
+                                                    md=8,
+                                                ),
+                                                dbc.Col(
+                                                    html.Div(
+                                                        id="p2-robust-mc-metrics-table",
+                                                        style={
+                                                            "fontSize": "0.8rem",
+                                                            "backgroundColor": "#222222",
+                                                            "border": "1px solid #444444",
+                                                            "padding": "0.5rem",
+                                                            "maxHeight": "320px",
+                                                            "overflowY": "auto",
+                                                        },
+                                                    ),
+                                                    md=4,
+                                                ),
+                                            ],
+                                            className="mb-3",
+                                        ),
+                                        
+                                        # Row 6: MC ECDF final equity + probability of ruin chart
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    dcc.Graph(
+                                                        id="p2-robust-mc-final-ecdf",
+                                                        figure={},
+                                                        style={"height": "260px"},
+                                                    ),
+                                                    md=6,
+                                                ),
+                                                dbc.Col(
+                                                    dcc.Graph(
+                                                        id="p2-robust-mc-ruin-bar",
+                                                        figure={},
+                                                        style={"height": "260px"},
+                                                    ),
+                                                    md=6,
+                                                ),
+                                            ],
+                                            className="mb-3",
+                                        ),
+                                        # ------------------------------
+                                        # Row 7: Random start-date analysis
+                                        # ------------------------------
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    dbc.Card(
+                                                        [
+                                                            dbc.CardHeader("Random start-date analysis"),
+                                                            dbc.CardBody(
+                                                                [
+                                                                    html.Div(
+                                                                        "Draw N random start dates and evaluate the next M months as a contiguous real window (no reshuffle).",
+                                                                        style={"fontSize": "0.8rem", "color": "#BBBBBB", "marginBottom": "0.75rem"},
+                                                                    ),
+                                        
+                                                                    html.Div("N periods", style={"fontSize": "0.8rem", "marginTop": "0.25rem"}),
+                                                                    dcc.Input(
+                                                                        id="p2-randstart-n-periods",
+                                                                        type="number",
+                                                                        min=5,
+                                                                        step=1,
+                                                                        value=50,
+                                                                        style={"width": "40%"},
+                                                                    ),
+                                        
+                                                                    html.Div("Period length (months)", style={"fontSize": "0.8rem", "marginTop": "0.6rem"}),
+                                                                    dcc.Input(
+                                                                        id="p2-randstart-months",
+                                                                        type="number",
+                                                                        min=1,
+                                                                        step=1,
+                                                                        value=6,
+                                                                        style={"width": "40%"},
+                                                                    ),
+                                        
+                                                                    dbc.Checklist(
+                                                                        id="p2-randstart-no-overlap",
+                                                                        options=[{"label": "Avoid overlapping windows (best effort)", "value": "no_overlap"}],
+                                                                        value=[],
+                                                                        style={"marginTop": "0.75rem", "fontSize": "0.85rem"},
+                                                                    ),
+                                        
+                                                                    dbc.Button(
+                                                                        "Run random start-date analysis",
+                                                                        id="p2-randstart-run-btn",
+                                                                        n_clicks=0,
+                                                                        color="primary",
+                                                                        className="mt-2",
+                                                                        style={"width": "100%"},
+                                                                    ),
+                                        
+                                                                    html.Div(
+                                                                        id="p2-randstart-status",
+                                                                        style={"marginTop": "0.6rem", "fontSize": "0.8rem", "color": "#BBBBBB"},
+                                                                    ),
+                                                                ]
+                                                            ),
+                                                        ],
+                                                        style={"backgroundColor": "#222222", "border": "1px solid #333333"},
+                                                    ),
+                                                    width=3,
+                                                ),
+                                                dbc.Col(
+                                                    dbc.Card(
+                                                        [
+                                                            dbc.CardBody(
+                                                                [
+                                                                    dcc.Graph(
+                                                                        id="p2-randstart-fig",
+                                                                        figure={},
+                                                                        config={"displayModeBar": True, "displaylogo": False},
+                                                                        style={"height": "420px"},
+                                                                    )
+                                                                ]
+                                                            )
+                                                        ],
+                                                        style={"backgroundColor": "#222222", "border": "1px solid #333333"},
+                                                    ),
+                                                    width=9,
+                                                ),
+                                            ],
+                                            className="g-2",
+                                            style={"marginTop": "0.75rem"},
+                                        ),
+                                        # Row 8: Random start-date – dispersion view
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    dcc.Graph(
+                                                        id="p2-randstart-dist-fig",
+                                                        figure={},
+                                                        style={"height": "260px"},
+                                                    ),
+                                                    md=7,
+                                                ),
+                                                dbc.Col(
+                                                    html.Div(
+                                                        id="p2-randstart-metrics",
+                                                        style={
+                                                            "fontSize": "0.8rem",
+                                                            "backgroundColor": "#222222",
+                                                            "border": "1px solid #444444",
+                                                            "padding": "0.5rem",
+                                                            "maxHeight": "260px",
+                                                            "overflowY": "auto",
+                                                        },
+                                                    ),
+                                                    md=5,
+                                                ),
+                                            ],
+                                            className="mb-3",
+                                            style={"marginTop": "0.5rem"},
+                                        ),
+
+                                    ],
+                                    style={"padding": "0.75rem", "fontSize": "0.85rem"},
+                                ),
+                            ),
                             dcc.Tab(
                                 label="Portfolio Optimizer",
                                 value="p2-optimizer",
@@ -1842,12 +2470,53 @@ def update_portfolio_contribution_charts(
 
     contr_vals = contr_vals.reindex(ordered_uids)
     labels_full = [uid_to_name[u] for u in ordered_uids]
-
+    labels_axis = [
+        (name[:25] + "…") if len(name) > 25 else name
+        for name in labels_full
+    ]
+    
     # Waterfall: one bar per strategy, final total
-    wf_x = labels_full + ["Total"]
-    wf_y = list(contr_vals.values) + [float(contr_vals.sum())]
-    measures = ["relative"] * len(contr_vals) + ["total"]
-
+    bar_vals = list(contr_vals.values)
+    total_val = float(contr_vals.sum())
+    
+    wf_x = labels_axis + ["Total"]
+    wf_y = bar_vals + [total_val]
+    measures = ["relative"] * len(bar_vals) + ["total"]
+    
+    # Build contribution + cumulative explicitly for hover
+    contrib_vals: list[float] = []
+    cumulative_vals: list[float] = []
+    running = 0.0
+    for i, val in enumerate(wf_y):
+        if measures[i] == "total":
+            contrib = val          # total bar
+            running = val
+        else:
+            contrib = val          # relative step = contribution
+            running += val
+        contrib_vals.append(contrib)
+        cumulative_vals.append(running)
+    
+    hover_names = labels_full + ["Total"]
+    
+    # customdata: col 0 = contribution, col 1 = cumulative
+    customdata = np.column_stack([contrib_vals, cumulative_vals])
+    
+    if pnl_mode == "pct":
+        hovertemplate = (
+            "<b>%{hovertext}</b><br>"
+            "Contribution: %{customdata[0]:.2f}%<br>"
+            "Cumulative: %{customdata[1]:.2f}%"
+            "<extra></extra>"
+        )
+    else:
+        hovertemplate = (
+            "<b>%{hovertext}</b><br>"
+            "Contribution: %{customdata[0]:,.0f}<br>"
+            "Cumulative: %{customdata[1]:,.0f}"
+            "<extra></extra>"
+        )
+    
     pnl_fig = go.Figure()
     pnl_fig.add_trace(
         go.Waterfall(
@@ -1858,8 +2527,13 @@ def update_portfolio_contribution_charts(
             decreasing={"marker": {"color": "#E74C3C"}},
             totals={"marker": {"color": "#5DADE2"}},
             connector={"line": {"color": "#888888"}},
+            hovertext=hover_names,
+            customdata=customdata,
+            hovertemplate=hovertemplate,
         )
     )
+
+
     pnl_fig.update_layout(
         template="plotly_dark",
         paper_bgcolor="#222222",

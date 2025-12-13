@@ -12,6 +12,8 @@ from statistics import NormalDist  # for BCa
 
 from dash import callback, Input, Output, State, html
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
 
 from pages.page2 import _build_portfolio_timeseries
 
@@ -979,21 +981,27 @@ def _random_start_date_analysis(
 def _randstart_figure(rows: list[dict]) -> go.Figure:
     fig = go.Figure()
 
+    # Empty state
     if not rows:
         fig.update_layout(
             template="plotly_dark",
             paper_bgcolor="#222222",
             plot_bgcolor="#222222",
             font={"color": "#EEEEEE"},
-            title={"text": "Random start-date analysis", "x": 0.01, "xanchor": "left"},
-            xaxis={"title": "Period"},
+            title={
+                "text": "Random start-date analysis (contiguous windows)",
+                "x": 0.01,
+                "xanchor": "left",
+            },
+            xaxis={"title": "Random window index"},
             yaxis={"title": "Total P&L ($)"},
         )
         return fig
 
-    x = [f"P{i+1}" for i in range(len(rows))]
-    pnl = [r["total_pnl"] for r in rows]
-    maxdd_pct = [r["max_dd"] * 100.0 for r in rows]
+    # X-axis labels and series
+    x_labels = [f"P{i+1}" for i in range(len(rows))]
+    pnl = np.array([r["total_pnl"] for r in rows], dtype=float)
+    maxdd_pct = np.array([r["max_dd"] * 100.0 for r in rows], dtype=float)
 
     hover = [
         f"Start: {r['start'].date()}<br>"
@@ -1006,26 +1014,127 @@ def _randstart_figure(rows: list[dict]) -> go.Figure:
         for r in rows
     ]
 
+    # ---------------------------
+    # Main series
+    # ---------------------------
+
+    # Total P&L on left axis
     fig.add_trace(
         go.Scatter(
-            x=x,
+            x=x_labels,
             y=pnl,
             mode="lines+markers",
             name="Total P&L ($)",
             hovertext=hover,
             hoverinfo="text",
+            legendgroup="pnl",
+            showlegend=True,
         )
     )
 
+    # Max DD on right axis
     fig.add_trace(
         go.Scatter(
-            x=x,
+            x=x_labels,
             y=maxdd_pct,
             mode="lines+markers",
             name="Max drawdown (%)",
             yaxis="y2",
             hovertext=hover,
             hoverinfo="text",
+            legendgroup="dd",
+            showlegend=True,
+        )
+    )
+
+    # ---------------------------
+    # Percentile lines (toggle with their group)
+    # ---------------------------
+
+    # P&L percentiles
+    pnl_p25 = float(np.percentile(pnl, 25))
+    pnl_p50 = float(np.percentile(pnl, 50))
+    pnl_p75 = float(np.percentile(pnl, 75))
+
+    fig.add_trace(
+        go.Scatter(
+            x=[x_labels[0], x_labels[-1]],
+            y=[pnl_p25, pnl_p25],
+            mode="lines",
+            name="P&L 25th",
+            line=dict(color="rgba(135,206,250,0.6)", width=1, dash="dot"),
+            legendgroup="pnl",
+            showlegend=False,
+            hoverinfo="skip",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[x_labels[0], x_labels[-1]],
+            y=[pnl_p50, pnl_p50],
+            mode="lines",
+            name="P&L median",
+            line=dict(color="rgba(135,206,250,0.9)", width=2, dash="dash"),
+            legendgroup="pnl",
+            showlegend=False,
+            hoverinfo="skip",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[x_labels[0], x_labels[-1]],
+            y=[pnl_p75, pnl_p75],
+            mode="lines",
+            name="P&L 75th",
+            line=dict(color="rgba(135,206,250,0.6)", width=1, dash="dot"),
+            legendgroup="pnl",
+            showlegend=False,
+            hoverinfo="skip",
+        )
+    )
+
+    # Max DD percentiles
+    dd_p25 = float(np.percentile(maxdd_pct, 25))
+    dd_p50 = float(np.percentile(maxdd_pct, 50))
+    dd_p75 = float(np.percentile(maxdd_pct, 75))
+
+    fig.add_trace(
+        go.Scatter(
+            x=[x_labels[0], x_labels[-1]],
+            y=[dd_p25, dd_p25],
+            mode="lines",
+            name="DD 25th",
+            line=dict(color="rgba(255,165,0,0.6)", width=1, dash="dot"),
+            yaxis="y2",
+            legendgroup="dd",
+            showlegend=False,
+            hoverinfo="skip",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[x_labels[0], x_labels[-1]],
+            y=[dd_p50, dd_p50],
+            mode="lines",
+            name="DD median",
+            line=dict(color="rgba(255,165,0,0.9)", width=2, dash="dash"),
+            yaxis="y2",
+            legendgroup="dd",
+            showlegend=False,
+            hoverinfo="skip",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[x_labels[0], x_labels[-1]],
+            y=[dd_p75, dd_p75],
+            mode="lines",
+            name="DD 75th",
+            line=dict(color="rgba(255,165,0,0.6)", width=1, dash="dot"),
+            yaxis="y2",
+            legendgroup="dd",
+            showlegend=False,
+            hoverinfo="skip",
         )
     )
 
@@ -1034,7 +1143,11 @@ def _randstart_figure(rows: list[dict]) -> go.Figure:
         paper_bgcolor="#222222",
         plot_bgcolor="#222222",
         font={"color": "#EEEEEE"},
-        title={"text": "Random start-date analysis (contiguous windows)", "x": 0.01, "xanchor": "left"},
+        title={
+            "text": "Random start-date analysis (contiguous windows)",
+            "x": 0.01,
+            "xanchor": "left",
+        },
         xaxis={"title": "Random window index"},
         yaxis={"title": "Total P&L ($)"},
         yaxis2={
@@ -1043,10 +1156,173 @@ def _randstart_figure(rows: list[dict]) -> go.Figure:
             "side": "right",
             "showgrid": False,
         },
-        legend={"orientation": "h", "y": -0.2},
+        legend={
+            "orientation": "h",
+            "y": -0.2,
+            "groupclick": "togglegroup",
+        },
         margin=dict(l=60, r=60, t=50, b=60),
     )
+
     return fig
+
+
+
+
+def _randstart_dist_figure(rows: list[dict]) -> go.Figure:
+    """
+    Distribution view for random windows:
+    - Left: Total P&L histogram + violin
+    - Right: Max DD (%) histogram + violin
+    """
+    fig = make_subplots(
+        rows=1,
+        cols=2,
+        subplot_titles=("Total P&L distribution", "Max DD distribution (%)"),
+        horizontal_spacing=0.18,
+    )
+
+    if not rows:
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="#222222",
+            plot_bgcolor="#222222",
+            font={"color": "#EEEEEE"},
+        )
+        return fig
+
+    pnl = np.array([r["total_pnl"] for r in rows], dtype=float)
+    maxdd_pct = np.array([r["max_dd"] * 100.0 for r in rows], dtype=float)
+
+    # Total P&L
+    fig.add_trace(
+        go.Histogram(x=pnl, nbinsx=20, name="P&L hist", opacity=0.75),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Violin(
+            x=pnl,
+            name="P&L violin",
+            points=False,
+            box_visible=True,
+            meanline_visible=True,
+            opacity=0.7,
+        ),
+        row=1,
+        col=1,
+    )
+
+    # Max DD %
+    fig.add_trace(
+        go.Histogram(x=maxdd_pct, nbinsx=20, name="DD hist", opacity=0.75),
+        row=1,
+        col=2,
+    )
+    fig.add_trace(
+        go.Violin(
+            x=maxdd_pct,
+            name="DD violin",
+            points=False,
+            box_visible=True,
+            meanline_visible=True,
+            opacity=0.7,
+        ),
+        row=1,
+        col=2,
+    )
+
+    fig.update_xaxes(title_text="Total P&L ($)", row=1, col=1)
+    fig.update_xaxes(title_text="Max DD (%)", row=1, col=2)
+    fig.update_yaxes(title_text="Frequency", row=1, col=1)
+    fig.update_yaxes(title_text="Frequency", row=1, col=2)
+
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="#222222",
+        plot_bgcolor="#222222",
+        font={"color": "#EEEEEE"},
+        legend=dict(orientation="h", y=-0.4),
+        margin=dict(l=60, r=40, t=60, b=60),
+    )
+    return fig
+
+
+def _randstart_metrics(rows: list[dict]) -> html.Table | html.Div:
+    """
+    Small dispersion table for random-start windows.
+    """
+    if not rows:
+        return html.Div("No random windows generated.", style={"color": "#AAAAAA"})
+
+    pnl = np.array([r["total_pnl"] for r in rows], dtype=float)
+    ret_pct = np.array([r["ret_pct"] * 100.0 for r in rows], dtype=float)
+    maxdd_pct = np.array([r["max_dd"] * 100.0 for r in rows], dtype=float)
+
+    def iqr(x: np.ndarray) -> float:
+        return float(np.percentile(x, 75) - np.percentile(x, 25))
+
+    rows_out: list[tuple[str, str]] = []
+    rows_out.append(("N windows", f"{len(pnl)}"))
+
+    # P&L block
+    rows_out.append(("\u2014 Total P&L ($) \u2014", ""))
+    pnl_med = float(np.median(pnl))
+    pnl_p25 = float(np.percentile(pnl, 25))
+    pnl_p75 = float(np.percentile(pnl, 75))
+    rows_out.append(("Median", f"{pnl_med:,.0f}"))
+    rows_out.append(("P25 / P75", f"{pnl_p25:,.0f} / {pnl_p75:,.0f}"))
+    rows_out.append(("Min / Max", f"{pnl.min():,.0f} / {pnl.max():,.0f}"))
+    if pnl_med != 0:
+        rows_out.append(
+            ("IQR / |median|", f"{iqr(pnl) / abs(pnl_med):.2f}")
+        )
+
+    # Return %
+    rows_out.append(("\u2014 Return (%) \u2014", ""))
+    ret_med = float(np.median(ret_pct))
+    ret_p25 = float(np.percentile(ret_pct, 25))
+    ret_p75 = float(np.percentile(ret_pct, 75))
+    rows_out.append(("Median", f"{ret_med:.1f}%"))
+    rows_out.append(("P25 / P75", f"{ret_p25:.1f}% / {ret_p75:.1f}%"))
+
+    # Max DD %
+    rows_out.append(("\u2014 Max DD (%) \u2014", ""))
+    dd_med = float(np.median(maxdd_pct))
+    dd_p25 = float(np.percentile(maxdd_pct, 25))
+    dd_p75 = float(np.percentile(maxdd_pct, 75))
+    rows_out.append(("Median", f"{dd_med:.1f}%"))
+    rows_out.append(("P25 / P75", f"{dd_p25:.1f}% / {dd_p75:.1f}%"))
+    rows_out.append(("Min / Max", f"{maxdd_pct.min():.1f}% / {maxdd_pct.max():.1f}%"))
+
+    table_rows = []
+    for label, value in rows_out:
+        is_header = value == ""
+        style_label = {"padding": "0.15rem 0.4rem"}
+        style_val = {
+            "padding": "0.15rem 0.4rem",
+            "textAlign": "right",
+        }
+        if is_header:
+            style_label.update({"fontWeight": "bold", "paddingTop": "0.35rem"})
+        table_rows.append(
+            html.Tr(
+                [
+                    html.Td(label, style=style_label),
+                    html.Td(value, style=style_val),
+                ]
+            )
+        )
+
+    return html.Table(
+        table_rows,
+        style={
+            "width": "100%",
+            "borderCollapse": "collapse",
+            "fontSize": "0.8rem",
+        },
+    )
+
 
 
 # ---------------------------------------------------------------------------
@@ -1566,60 +1842,49 @@ def run_portfolio_mc(
 
 @callback(
     Output("p2-randstart-fig", "figure"),
+    Output("p2-randstart-dist-fig", "figure"),
+    Output("p2-randstart-metrics", "children"),
     Output("p2-randstart-status", "children"),
     Input("p2-randstart-run-btn", "n_clicks"),
     State("p2-randstart-n-periods", "value"),
     State("p2-randstart-months", "value"),
     State("p2-randstart-no-overlap", "value"),
+    State("p1-active-list-store", "data"),
+    State("p2-weights-store", "data"),
     State("p2-initial-equity-input", "value"),
-    State("p2-weights-store", "data"),      # <-- must match your existing weights store ID
-    State("p2-weight-mode", "value"),       # <-- must match your existing weight-mode control ID
-    State("p2-strategy-checklist", "value"),# <-- must match your existing Page 2 strategy selector ID
-    prevent_initial_call=True,
 )
 def run_random_start_date_analysis(
     n_clicks,
     n_periods,
     months,
     no_overlap_val,
-    eq0,
+    active_store,
     weights_store,
-    weight_mode,
-    selected_strategy_ids,
+    initial_equity_value,
 ):
+    # Initial blank state – consistent dark figures
+    if not n_clicks:
+        msg = "Click 'Run random start-date analysis' to generate results."
+        empty_main = _empty_robustness_figure(msg)
+        empty_dist = _empty_robustness_figure("Distribution will appear here after running the test.")
+        metrics = html.Div("No results yet.", style={"color": "#AAAAAA"})
+        return empty_main, empty_dist, metrics, msg
 
     # Defensive defaults
     n_periods = int(n_periods or 50)
     months = int(months or 6)
-    eq0 = float(eq0 or 100000.0)
     no_overlap = bool(no_overlap_val) and ("no_overlap" in no_overlap_val)
 
-    if not selected_strategy_ids:
-        return go.Figure(), "Select at least one strategy."
+    # Build portfolio daily P&L (same as Bootstrap/MC)
+    pnl, eq0 = _extract_portfolio_pnl(active_store, weights_store, initial_equity_value)
+    if pnl is None:
+        msg = "Unable to build portfolio daily P&L. Check selected strategies and date overlap."
+        empty = _empty_robustness_figure(msg)
+        metrics = html.Div(msg, style={"color": "#AAAAAA"})
+        return empty, empty, metrics, msg
 
-    # Reuse your portfolio builder (same as Bootstrap/MC)
-    # This must return a daily P&L series (dollars) indexed by date.
-    ts = _build_portfolio_timeseries(
-        selected_strategy_ids,
-        weights_store,
-        weight_mode,
-        eq0,
-    )
-    
-    # Your helper returns a dict in page2 usage; portfolio daily $ P&L must be in one of these keys.
-    if isinstance(ts, dict):
-        if "portfolio_daily" in ts:
-            daily_pnl = ts["portfolio_daily"]
-        elif "daily_pnl" in ts:
-            daily_pnl = ts["daily_pnl"]
-        else:
-            return go.Figure(), "ERROR: _build_portfolio_timeseries did not return a daily P&L series key."
-    else:
-        daily_pnl = ts
-
-    
     out = _random_start_date_analysis(
-        daily_pnl=daily_pnl,
+        daily_pnl=pnl,
         months=months,
         n_periods=n_periods,
         eq0=eq0,
@@ -1627,7 +1892,16 @@ def run_random_start_date_analysis(
         seed=None,
     )
 
-    fig = _randstart_figure(out["rows"])
-    msg = out["error"] or f"Generated {len(out['rows'])} windows of {months} months."
-    return fig, msg
+    rows = out.get("rows") or []
+    if len(rows) == 0:
+        msg = out.get("error") or "No windows produced. Try reducing window length or disabling no-overlap."
+        empty = _empty_robustness_figure(msg)
+        metrics = html.Div(msg, style={"color": "#AAAAAA"})
+        return empty, empty, metrics, msg
 
+    fig_main = _randstart_figure(rows)
+    fig_dist = _randstart_dist_figure(rows)
+    metrics = _randstart_metrics(rows)
+    msg = out.get("error") or f"Generated {len(rows)} windows of {months} months."
+
+    return fig_main, fig_dist, metrics, msg

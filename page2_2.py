@@ -1341,7 +1341,7 @@ def _randstart_metrics(rows: list[dict]) -> html.Table | html.Div:
     Input("p2-robust-boot-run-btn", "n_clicks"),
     State("p1-active-list-store", "data"),
     State("p2-weights-store", "data"),
-    State("p2-initial-equity-input", "value"),
+    State("p2-robust-initial-equity-input", "value"),
     State("p2-robust-boot-n-sim", "value"),
     State("p2-robust-boot-block-len", "value"),
 )
@@ -1519,7 +1519,7 @@ def run_portfolio_bootstrap(
     Input("p2-robust-mc-run-btn", "n_clicks"),
     State("p1-active-list-store", "data"),
     State("p2-weights-store", "data"),
-    State("p2-initial-equity-input", "value"),
+    State("p2-robust-initial-equity-input", "value"),
     State("p2-robust-mc-n-sim", "value"),
     State("p2-robust-mc-horizon-days", "value"),
     State("p2-robust-ruin-threshold", "value"),
@@ -1851,7 +1851,7 @@ def run_portfolio_mc(
     State("p2-randstart-no-overlap", "value"),
     State("p1-active-list-store", "data"),
     State("p2-weights-store", "data"),
-    State("p2-initial-equity-input", "value"),
+    State("p2-robust-initial-equity-input", "value"),
 )
 def run_random_start_date_analysis(
     n_clicks,

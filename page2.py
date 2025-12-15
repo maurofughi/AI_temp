@@ -30,17 +30,19 @@ from core.sh_layout import (
 )
 from core.registry import list_portfolios
 from pages.page1 import VIX_SLIDER_MIN, VIX_SLIDER_MAX, VIX_MARKS
+from pages.page2_3 import layout_tab_portfolio_builder
+
 
 
 
 def build_phase2_right_panel():
     """
-    Phase 2 right-hand panel (Portfolio Analytics / Allocation Scenarios / Optimizer).
+    Phase 2 right-hand panel (Portfolio Analytics / Correlation / Robustness / Builder).
     Does NOT include loader or strategy list. Reused later by main.py.
     """
     return dbc.Card(
         [
-            dbc.CardHeader("Portfolio-level analysis and optimizer"),
+            dbc.CardHeader("Portfolio-level analysis and builder"),
             dbc.CardBody(
                 [
                     dcc.Tabs(
@@ -1105,7 +1107,7 @@ def build_phase2_right_panel():
                                                                                     style={"fontSize": "0.8rem", "marginBottom": "0.1rem"},
                                                                                 ),
                                                                                 dcc.Input(
-                                                                                    id="p2-initial-equity-input",
+                                                                                    id="p2-robust-initial-equity-input",
                                                                                     type="number",
                                                                                     value=100000,
                                                                                     min=0,
@@ -1571,6 +1573,21 @@ def build_phase2_right_panel():
                                 ),
                             ),
                             dcc.Tab(
+                                label="Portfolio Builder",
+                                value="p2-builder",
+                                style={
+                                    "backgroundColor": "#333333",
+                                    "color": "#BBBBBB",
+                                    "padding": "8px 12px",
+                                },
+                                selected_style={
+                                    "backgroundColor": "#555555",
+                                    "color": "#FFFFFF",
+                                    "padding": "8px 12px",
+                                },
+                                children=layout_tab_portfolio_builder(),
+                            ),
+                            dcc.Tab(
                                 label="Portfolio Optimizer",
                                 value="p2-optimizer",
                                 children=html.Div(
@@ -1588,6 +1605,7 @@ def build_phase2_right_panel():
                                     "padding": "8px 12px",
                                 },
                             ),
+
                         ],
                     )
                 ]

@@ -406,6 +406,9 @@ def build_strategy_sidebar():
         # Phase 2 weights/factors store (per-strategy, keyed by UID)
         dcc.Store(id="p2-weights-store", data={}),
         
+        # Portfolio Builder -> Weights-panel bridge (candidate integer lots)
+        dcc.Store(id="p2-builder-apply-lots", data=None),
+        
         # Hidden checklist to maintain backward compatibility with existing callbacks
         html.Div(
             dcc.Checklist(
@@ -1907,6 +1910,7 @@ def sync_active_checkboxes_to_checklist(
     Input("p1-current-portfolio-id", "data"),
     Input("p2-weights-equalize-btn", "n_clicks"),
     Input("p2-weights-reset-saved-btn", "n_clicks"),
+    Input("p2-builder-apply-lots", "data"),                 # NEW
     Input({"type": "p2-factor-input", "uid": ALL}, "value"),
     State("p2-weights-store", "data"),
     prevent_initial_call=True,
@@ -1916,6 +1920,7 @@ def update_weights_panel(
     current_portfolio_id,
     n_equalize,
     n_reset,
+    builder_lots,
     factor_values,
     weights_store,
 ):
@@ -2000,6 +2005,18 @@ def update_weights_panel(
                 base_factors[uid] = float(val)
             except (TypeError, ValueError):
                 base_factors[uid] = 1.0
+                
+    elif triggered_id == "p2-builder-apply-lots":          # Apply lots determined from Portfolio Builder Run
+        # Apply integer lots from Portfolio Builder as factors
+        lots_map = builder_lots or {}
+        if isinstance(lots_map, dict):
+            for uid in active_uids:
+                if uid in lots_map:
+                    try:
+                        base_factors[uid] = float(int(lots_map[uid]))
+                    except (TypeError, ValueError):
+                        base_factors[uid] = 1.0
+        # UIDs not present in lots_map keep their previous factor
 
     elif isinstance(triggered_id, dict) and triggered_id.get("type") == "p2-factor-input":
         # Manual factor edit – use the factor_values aligned with active_rows order

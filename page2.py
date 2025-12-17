@@ -2010,7 +2010,10 @@ def update_portfolio_analytics(
     else:
         total_pnl = float(equity_main.iloc[-1] - initial_equity_main)
         max_dd_abs = float(dd_main.max())
-        max_dd_pct = float((dd_pct.max() or 0.0) * 100.0)
+        #max_dd_pct = float((dd_pct.max() or 0.0) * 100.0)
+        max_dd_pct = float(dd_pct.loc[dd_main.idxmax()] * 100.0) if max_dd_abs > 0 else 0.0
+
+        
 
         # Daily return based on initial equity, same as Phase 1 logic
         daily_ret = portfolio_daily / initial_equity_main
@@ -2497,7 +2500,12 @@ def update_portfolio_contribution_charts(
     bar_vals = list(contr_vals.values)
     total_val = float(contr_vals.sum())
     
-    wf_x = labels_axis + ["Total"]
+    # Waterfall: one bar per strategy, final total
+    bar_vals = list(contr_vals.values)
+    total_val = float(contr_vals.sum())
+    
+    # IMPORTANT: use UIDs as x categories to keep them unique
+    wf_x = ordered_uids + ["__TOTAL__"]
     wf_y = bar_vals + [total_val]
     measures = ["relative"] * len(bar_vals) + ["total"]
     
@@ -2507,10 +2515,10 @@ def update_portfolio_contribution_charts(
     running = 0.0
     for i, val in enumerate(wf_y):
         if measures[i] == "total":
-            contrib = val          # total bar
+            contrib = val
             running = val
         else:
-            contrib = val          # relative step = contribution
+            contrib = val
             running += val
         contrib_vals.append(contrib)
         cumulative_vals.append(running)
@@ -2550,7 +2558,15 @@ def update_portfolio_contribution_charts(
             hovertemplate=hovertemplate,
         )
     )
-
+    
+    # Use truncated labels ONLY for axis tick text, not for categories
+    tick_labels = labels_axis + ["Total"]
+    tick_vals = ordered_uids + ["__TOTAL__"]
+    pnl_fig.update_xaxes(
+        tickmode="array",
+        tickvals=tick_vals,
+        ticktext=tick_labels,
+    )
 
     pnl_fig.update_layout(
         template="plotly_dark",

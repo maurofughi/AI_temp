@@ -21,6 +21,8 @@ from core.registry import list_portfolios
 from pages.page1 import build_phase1_right_panel
 from pages.page2 import build_phase2_right_panel
 import pages.page2_2  # noqa: F401
+import pages.page2_3  # noqa: F401
+
 
 
 PORT = 8050

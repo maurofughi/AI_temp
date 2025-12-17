@@ -2019,19 +2019,25 @@ def update_weights_panel(
         # UIDs not present in lots_map keep their previous factor
 
     elif isinstance(triggered_id, dict) and triggered_id.get("type") == "p2-factor-input":
-        # Manual factor edit – use the factor_values aligned with active_rows order
+        # Manual factor edit – use factor_values aligned with active_rows order
         factor_values = factor_values or []
         for idx, uid in enumerate(active_uids):
             if idx < len(factor_values) and factor_values[idx] is not None:
                 try:
                     v = float(factor_values[idx])
                 except (TypeError, ValueError):
-                    # If user types junk, keep previous or default to 1.0
-                    v = base_factors.get(uid, 1.0) or 1.0
+                    # Junk input: keep previous if present, else default to 1.0
+                    prev = base_factors.get(uid, None)
+                    v = float(prev) if prev is not None else 1.0
             else:
-                v = base_factors.get(uid, 1.0) or 1.0
-            if v <= 0:
-                v = 1.0
+                # No value provided for this input: keep previous if present, else default to 1.0
+                prev = base_factors.get(uid, None)
+                v = float(prev) if prev is not None else 1.0
+    
+            # Allow 0 (explicitly disables a strategy); clamp only negatives
+            if v < 0:
+                v = 0.0
+    
             base_factors[uid] = v
 
     else:

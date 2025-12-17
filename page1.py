@@ -2723,9 +2723,19 @@ def update_overview(selected_strategy_ids, mode):
             cagr = None
 
         # Max DD in percentage (relative to running peak equity)
+        # cummax_eq = equity.cummax()
+        # dd_pct_series = (equity - cummax_eq) / cummax_eq.replace(0, np.nan)
+        # max_dd_pct = dd_pct_series.min() if not dd_pct_series.empty else None
+        
         cummax_eq = equity.cummax()
         dd_pct_series = (equity - cummax_eq) / cummax_eq.replace(0, np.nan)
-        max_dd_pct = dd_pct_series.min() if not dd_pct_series.empty else None
+        
+        if not agg_dd.empty:
+            trough_date = agg_dd.idxmin()  # trough of max-$ drawdown
+            max_dd_pct = dd_pct_series.loc[trough_date]
+        else:
+            max_dd_pct = None
+
 
         # Daily returns & annualised Sharpe (Option A: daily, √252)
         daily_returns = equity.pct_change().dropna()

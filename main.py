@@ -3,6 +3,9 @@
 Created on Fri Nov 21 10:09:09 2025
 
 @author: mauro
+
+ML Utilities page
+- Layout
 """
 
 import dash
@@ -20,6 +23,10 @@ from core.registry import list_portfolios
 
 from pages.page1 import build_phase1_right_panel
 from pages.page2 import build_phase2_right_panel
+from pages.page4 import build_phase3_right_panel
+from pages.page5 import build_ml_cpo_right_panel
+
+
 import pages.page2_2  # noqa: F401
 import pages.page2_3  # noqa: F401
 
@@ -50,26 +57,6 @@ def layout_page_3_portfolio_compare():
         [
             html.H3("Phase 2 – Portfolio Comparisons", className="mb-3"),
             html.P("TODO: compare multiple candidate portfolios side by side."),
-        ],
-        fluid=True,
-    )
-
-
-def layout_page_4_ml_utils():
-    return dbc.Container(
-        [
-            html.H3("Phase 2–3 – ML Utilities", className="mb-3"),
-            html.P("TODO: file conversions, dataset preparation, consistency checks."),
-        ],
-        fluid=True,
-    )
-
-
-def layout_page_5_ml_output():
-    return dbc.Container(
-        [
-            html.H3("Phase 3 – ML Output Analysis", className="mb-3"),
-            html.P("TODO: ML vs baseline portfolio metrics and charts."),
         ],
         fluid=True,
     )
@@ -237,7 +224,7 @@ app.layout = dbc.Container(
                 dbc.Tab(label="Portfolio Analytics", tab_id="tab-2"),
                 dbc.Tab(label="Portfolio Comparisons", tab_id="tab-3"),
                 dbc.Tab(label="ML Utilities", tab_id="tab-4"),
-                dbc.Tab(label="ML Output Analysis", tab_id="tab-5"),
+                dbc.Tab(label="ML CPO", tab_id="tab-5"),
             ],
         ),
 
@@ -282,9 +269,10 @@ def render_tab_content(active_tab):
         # For now, keep existing placeholder as the right panel
         return layout_page_3_portfolio_compare()
     elif active_tab == "tab-4":
-        return layout_page_4_ml_utils()
+        return build_phase3_right_panel()
     elif active_tab == "tab-5":
-        return layout_page_5_ml_output()
+        return build_ml_cpo_right_panel()
+
     # fallback
     return html.Div("Unknown tab")
 

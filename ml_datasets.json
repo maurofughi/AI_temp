@@ -1,0 +1,1464 @@
+{
+  "datasets": [
+    {
+      "build_warnings": [],
+      "created_at": "2025-12-17T14:12:19",
+      "dataset": {
+        "max_open_dt": "2025-12-12T09:32:00",
+        "min_open_dt": "2022-05-16T10:09:00",
+        "n_rows": 535,
+        "n_strategies": 3,
+        "path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\ml\\datasets\\panel__SNAP_20251217_141219__N3.csv",
+        "saved": true,
+        "sha256": "54e9506c516a4a3ce9366808cf871f177005e1dd469480379d63591bf9570c45"
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "0-DTE-Daily-AM-IC",
+        "18-45-WED-10-DTE-RIC-SMA-Crossover",
+        "9-Day-IC-VIX-9D-0-90-"
+      ],
+      "snapshot_id": "SNAP_20251217_141219",
+      "source_portfolio_id": null,
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "0-DTE-Daily-AM-IC": 1.0,
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": 1.0,
+        "9-Day-IC-VIX-9D-0-90-": 1.0
+      },
+      "strategy_sources": {
+        "0-DTE-Daily-AM-IC": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\0-DTE-Daily-AM-IC.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\0-DTE-Daily-AM-IC.csv"
+        },
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv"
+        },
+        "9-Day-IC-VIX-9D-0-90-": {
+          "resolution_mode": "internal_fallback",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\9-Day-IC-VIX-9D-0-90-.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\3DTE-Weekend-Condor-Early-Exit_20251216120801.csvC:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\9-Day-IC-VIX-9D-0-90-.csv"
+        }
+      }
+    },
+    {
+      "build_warnings": [],
+      "created_at": "2025-12-17T14:38:25",
+      "dataset": {
+        "max_open_dt": "2025-12-12T15:30:00",
+        "min_open_dt": "2022-05-16T10:09:00",
+        "n_rows": 692,
+        "n_strategies": 4,
+        "path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\ml\\datasets\\panel__SNAP_20251217_143825__N4.csv",
+        "saved": true,
+        "sha256": "e83372a919bfc896cb15d2ea3680e26eb56bde915527e978deee666dc3ce8e0b"
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "0-DTE-Daily-AM-IC",
+        "18-45-WED-10-DTE-RIC-SMA-Crossover",
+        "3DTE-Weekend-Condor-Early-Exit_20251216120801",
+        "9-Day-IC-VIX-9D-0-90-"
+      ],
+      "snapshot_id": "SNAP_20251217_143825",
+      "source_portfolio_id": null,
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "0-DTE-Daily-AM-IC": 1.0,
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": 1.0,
+        "3DTE-Weekend-Condor-Early-Exit_20251216120801": 1.0,
+        "9-Day-IC-VIX-9D-0-90-": 1.0
+      },
+      "strategy_sources": {
+        "0-DTE-Daily-AM-IC": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\0-DTE-Daily-AM-IC.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\0-DTE-Daily-AM-IC.csv"
+        },
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv"
+        },
+        "3DTE-Weekend-Condor-Early-Exit_20251216120801": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\3DTE-Weekend-Condor-Early-Exit_20251216120801.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\3DTE-Weekend-Condor-Early-Exit_20251216120801.csv"
+        },
+        "9-Day-IC-VIX-9D-0-90-": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\9-Day-IC-VIX-9D-0-90-.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\9-Day-IC-VIX-9D-0-90-.csv"
+        }
+      }
+    },
+    {
+      "build_warnings": [],
+      "created_at": "2025-12-17T14:44:24",
+      "dataset": {
+        "max_open_dt": "2025-11-14T14:00:00",
+        "min_open_dt": "2022-05-18T12:45:00",
+        "n_rows": 614,
+        "n_strategies": 4,
+        "path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\ml\\datasets\\panel__SNAP_20251217_144424__N4.csv",
+        "saved": true,
+        "sha256": "0fd8674dd687027bd9bc1de08737a77c22d71ad5d00826218f206f3193b29f82"
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH",
+        "18-45-WED-10-DTE-RIC-SMA-Crossover",
+        "FRI-5DTE-PutFLY",
+        "WED-9-DTE-Fly-filters-"
+      ],
+      "snapshot_id": "SNAP_20251217_144424",
+      "source_portfolio_id": "ph1::Test2::20251203171846",
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": 0.5,
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": 1.2,
+        "FRI-5DTE-PutFLY": 0.8,
+        "WED-9-DTE-Fly-filters-": 0.7
+      },
+      "strategy_sources": {
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv"
+        },
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv"
+        },
+        "FRI-5DTE-PutFLY": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\FRI-5DTE-PutFLY.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\FRI-5DTE-PutFLY.csv"
+        },
+        "WED-9-DTE-Fly-filters-": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\WED-9-DTE-Fly-filters-.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\WED-9-DTE-Fly-filters-.csv"
+        }
+      }
+    },
+    {
+      "build_warnings": [],
+      "created_at": "2025-12-17T14:45:11",
+      "dataset": {
+        "max_open_dt": "2025-12-05T14:00:00",
+        "min_open_dt": "2022-05-17T13:15:00",
+        "n_rows": 1491,
+        "n_strategies": 8,
+        "path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\ml\\datasets\\panel__SNAP_20251217_144511__N8.csv",
+        "saved": true,
+        "sha256": "77397b96b3081e5ea5a8b6cbc56d70c94196d0da8100543b9afe1cfb5c2345ec"
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00-v2",
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00_20251215121524",
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH",
+        "0-DTE-Long-AM-CDS",
+        "0-DTE-PCS-Tue-Fri-MECH",
+        "18-45-WED-10-DTE-RIC-SMA-Crossover",
+        "FRI-5DTE-PutFLY",
+        "WED-9-DTE-Fly-filters-"
+      ],
+      "snapshot_id": "SNAP_20251217_144511",
+      "source_portfolio_id": "ph1::Test2::20251203171846",
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00-v2": 1.0,
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00_20251215121524": 1.0,
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": 0.5,
+        "0-DTE-Long-AM-CDS": 1.0,
+        "0-DTE-PCS-Tue-Fri-MECH": 1.0,
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": 1.2,
+        "FRI-5DTE-PutFLY": 0.8,
+        "WED-9-DTE-Fly-filters-": 0.7
+      },
+      "strategy_sources": {
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00-v2": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\-WM-5DTE-CHUD-Put-BFly-FRI-2-00-v2.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\-WM-5DTE-CHUD-Put-BFly-FRI-2-00-v2.csv"
+        },
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00_20251215121524": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\-WM-5DTE-CHUD-Put-BFly-FRI-2-00_20251215121524.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\-WM-5DTE-CHUD-Put-BFly-FRI-2-00_20251215121524.csv"
+        },
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv"
+        },
+        "0-DTE-Long-AM-CDS": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\0-DTE-Long-AM-CDS.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\0-DTE-Long-AM-CDS.csv"
+        },
+        "0-DTE-PCS-Tue-Fri-MECH": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\0-DTE-PCS-Tue-Fri-MECH.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\0-DTE-PCS-Tue-Fri-MECH.csv"
+        },
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv"
+        },
+        "FRI-5DTE-PutFLY": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\FRI-5DTE-PutFLY.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\FRI-5DTE-PutFLY.csv"
+        },
+        "WED-9-DTE-Fly-filters-": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\WED-9-DTE-Fly-filters-.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\WED-9-DTE-Fly-filters-.csv"
+        }
+      }
+    },
+    {
+      "build_warnings": [],
+      "created_at": "2025-12-17T14:45:39",
+      "dataset": {
+        "max_open_dt": "2025-12-05T14:00:00",
+        "min_open_dt": "2022-05-17T13:15:00",
+        "n_rows": 1491,
+        "n_strategies": 8,
+        "path": null,
+        "saved": false,
+        "sha256": null
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00-v2",
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00_20251215121524",
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH",
+        "0-DTE-Long-AM-CDS",
+        "0-DTE-PCS-Tue-Fri-MECH",
+        "18-45-WED-10-DTE-RIC-SMA-Crossover",
+        "FRI-5DTE-PutFLY",
+        "WED-9-DTE-Fly-filters-"
+      ],
+      "snapshot_id": "SNAP_20251217_144539",
+      "source_portfolio_id": "ph1::Test2::20251203171846",
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00-v2": 1.0,
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00_20251215121524": 1.0,
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": 0.5,
+        "0-DTE-Long-AM-CDS": 1.0,
+        "0-DTE-PCS-Tue-Fri-MECH": 1.0,
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": 1.2,
+        "FRI-5DTE-PutFLY": 0.8,
+        "WED-9-DTE-Fly-filters-": 0.7
+      },
+      "strategy_sources": {
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00-v2": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\-WM-5DTE-CHUD-Put-BFly-FRI-2-00-v2.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\-WM-5DTE-CHUD-Put-BFly-FRI-2-00-v2.csv"
+        },
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00_20251215121524": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\-WM-5DTE-CHUD-Put-BFly-FRI-2-00_20251215121524.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\-WM-5DTE-CHUD-Put-BFly-FRI-2-00_20251215121524.csv"
+        },
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv"
+        },
+        "0-DTE-Long-AM-CDS": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\0-DTE-Long-AM-CDS.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\0-DTE-Long-AM-CDS.csv"
+        },
+        "0-DTE-PCS-Tue-Fri-MECH": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\0-DTE-PCS-Tue-Fri-MECH.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\0-DTE-PCS-Tue-Fri-MECH.csv"
+        },
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv"
+        },
+        "FRI-5DTE-PutFLY": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\FRI-5DTE-PutFLY.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\FRI-5DTE-PutFLY.csv"
+        },
+        "WED-9-DTE-Fly-filters-": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\WED-9-DTE-Fly-filters-.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\WED-9-DTE-Fly-filters-.csv"
+        }
+      }
+    },
+    {
+      "build_warnings": [],
+      "created_at": "2025-12-17T15:10:32",
+      "dataset": {
+        "max_open_dt": "2025-11-26T14:33:00",
+        "min_open_dt": "2022-05-17T13:44:00",
+        "n_rows": 1213,
+        "n_strategies": 2,
+        "path": null,
+        "saved": false,
+        "sha256": null
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "0-DTE-Long-AM-CDS",
+        "0-DTE-PM-IC-30-Delta-SMA"
+      ],
+      "snapshot_id": "SNAP_20251217_151032",
+      "source_portfolio_id": "ph1::Test1::20251203160050",
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "0-DTE-Long-AM-CDS": 1.2,
+        "0-DTE-PM-IC-30-Delta-SMA": 1.1
+      },
+      "strategy_sources": {
+        "0-DTE-Long-AM-CDS": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Long-AM-CDS.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Long-AM-CDS.csv"
+        },
+        "0-DTE-PM-IC-30-Delta-SMA": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PM-IC-30-Delta-SMA.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PM-IC-30-Delta-SMA.csv"
+        }
+      }
+    },
+    {
+      "build_warnings": [],
+      "created_at": "2025-12-17T21:05:32",
+      "dataset": {
+        "max_open_dt": "2025-11-14T14:00:00",
+        "min_open_dt": "2022-05-18T12:45:00",
+        "n_rows": 614,
+        "n_strategies": 4,
+        "path": null,
+        "saved": false,
+        "sha256": null
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH",
+        "18-45-WED-10-DTE-RIC-SMA-Crossover",
+        "FRI-5DTE-PutFLY",
+        "WED-9-DTE-Fly-filters-"
+      ],
+      "snapshot_id": "SNAP_20251217_210532",
+      "source_portfolio_id": "ph1::Test2::20251203171846",
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": 0.5,
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": 1.2,
+        "FRI-5DTE-PutFLY": 0.8,
+        "WED-9-DTE-Fly-filters-": 0.7
+      },
+      "strategy_sources": {
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv"
+        },
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv"
+        },
+        "FRI-5DTE-PutFLY": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\FRI-5DTE-PutFLY.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\FRI-5DTE-PutFLY.csv"
+        },
+        "WED-9-DTE-Fly-filters-": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\WED-9-DTE-Fly-filters-.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\WED-9-DTE-Fly-filters-.csv"
+        }
+      }
+    },
+    {
+      "build_warnings": [],
+      "created_at": "2025-12-18T09:52:49",
+      "dataset": {
+        "max_open_dt": "2025-11-26T14:33:00",
+        "min_open_dt": "2022-05-17T13:44:00",
+        "n_rows": 1458,
+        "n_strategies": 3,
+        "path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\ml\\datasets\\panel__SNAP_20251218_095249__N3.csv",
+        "saved": true,
+        "sha256": "33bc1d499b08d3907adb6da1c1f389fb4322968658fac896bec01d15a348150a"
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH",
+        "0-DTE-Long-AM-CDS",
+        "0-DTE-PM-IC-30-Delta-SMA"
+      ],
+      "snapshot_id": "SNAP_20251218_095249",
+      "source_portfolio_id": "ph1::Test1::20251203160050",
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": 0.6,
+        "0-DTE-Long-AM-CDS": 1.5,
+        "0-DTE-PM-IC-30-Delta-SMA": 1.8
+      },
+      "strategy_sources": {
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv"
+        },
+        "0-DTE-Long-AM-CDS": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Long-AM-CDS.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Long-AM-CDS.csv"
+        },
+        "0-DTE-PM-IC-30-Delta-SMA": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PM-IC-30-Delta-SMA.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PM-IC-30-Delta-SMA.csv"
+        }
+      }
+    },
+    {
+      "build_warnings": [],
+      "created_at": "2025-12-18T12:16:54",
+      "dataset": {
+        "max_open_dt": "2025-11-26T14:33:00",
+        "min_open_dt": "2022-05-17T13:44:00",
+        "n_rows": 1458,
+        "n_strategies": 3,
+        "path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\ml\\datasets\\panel__SNAP_20251218_121654__N3.csv",
+        "saved": true,
+        "sha256": "33bc1d499b08d3907adb6da1c1f389fb4322968658fac896bec01d15a348150a"
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH",
+        "0-DTE-Long-AM-CDS",
+        "0-DTE-PM-IC-30-Delta-SMA"
+      ],
+      "snapshot_id": "SNAP_20251218_121654",
+      "source_portfolio_id": "ph1::Test1::20251203160050",
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": 0.9,
+        "0-DTE-Long-AM-CDS": 1.2,
+        "0-DTE-PM-IC-30-Delta-SMA": 1.1
+      },
+      "strategy_sources": {
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv"
+        },
+        "0-DTE-Long-AM-CDS": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Long-AM-CDS.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Long-AM-CDS.csv"
+        },
+        "0-DTE-PM-IC-30-Delta-SMA": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PM-IC-30-Delta-SMA.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PM-IC-30-Delta-SMA.csv"
+        }
+      }
+    },
+    {
+      "build_warnings": [],
+      "created_at": "2025-12-18T12:17:57",
+      "dataset": {
+        "max_open_dt": "2025-11-14T14:00:00",
+        "min_open_dt": "2022-05-18T12:45:00",
+        "n_rows": 479,
+        "n_strategies": 3,
+        "path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\ml\\datasets\\panel__SNAP_20251218_121757__N3.csv",
+        "saved": true,
+        "sha256": "271b58ff04659072914ea4ada2295f7ba40543935c00ebe3dfe5cfe9de8c5a8a"
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH",
+        "18-45-WED-10-DTE-RIC-SMA-Crossover",
+        "FRI-5DTE-PutFLY"
+      ],
+      "snapshot_id": "SNAP_20251218_121757",
+      "source_portfolio_id": "ph1::Test2::20251203171846",
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": 0.5,
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": 1.2,
+        "FRI-5DTE-PutFLY": 0.8
+      },
+      "strategy_sources": {
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv"
+        },
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv"
+        },
+        "FRI-5DTE-PutFLY": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\FRI-5DTE-PutFLY.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\FRI-5DTE-PutFLY.csv"
+        }
+      }
+    },
+    {
+      "build_warnings": [],
+      "created_at": "2025-12-18T12:31:58",
+      "dataset": {
+        "max_open_dt": "2025-11-26T14:33:00",
+        "min_open_dt": "2022-05-17T11:31:00",
+        "n_rows": 3266,
+        "n_strategies": 11,
+        "path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\ml\\datasets\\panel__SNAP_20251218_123158__N11.csv",
+        "saved": true,
+        "sha256": "cee70b9671c192d35f623e8d00b9bd0f59c4f9dea70743f69f96a0fcdb599ce3"
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH",
+        "0-DTE-Long-AM-CDS",
+        "0-DTE-PCS-Tue-Fri-MECH",
+        "0-DTE-PM-IC-30-Delta-SMA",
+        "0-DTE-PM-PCS-atm-ORB-VIX-filters",
+        "18-45-WED-10-DTE-RIC-SMA-Crossover",
+        "CCS-ORB-NO-STOP-",
+        "Daily-Diagonal-PUT-Baseline-Backtest-DDO-2-10-55Delta",
+        "FRI-5DTE-PutFLY",
+        "Late-AM-SMA-Bull-Call",
+        "WED-9-DTE-Fly-filters-"
+      ],
+      "snapshot_id": "SNAP_20251218_123158",
+      "source_portfolio_id": "ph1::Test5::20251205163446",
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": 1.0,
+        "0-DTE-Long-AM-CDS": 1.0,
+        "0-DTE-PCS-Tue-Fri-MECH": 1.0,
+        "0-DTE-PM-IC-30-Delta-SMA": 1.0,
+        "0-DTE-PM-PCS-atm-ORB-VIX-filters": 1.0,
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": 1.0,
+        "CCS-ORB-NO-STOP-": 1.0,
+        "Daily-Diagonal-PUT-Baseline-Backtest-DDO-2-10-55Delta": 1.0,
+        "FRI-5DTE-PutFLY": 1.0,
+        "Late-AM-SMA-Bull-Call": 1.0,
+        "WED-9-DTE-Fly-filters-": 1.0
+      },
+      "strategy_sources": {
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv"
+        },
+        "0-DTE-Long-AM-CDS": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Long-AM-CDS.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Long-AM-CDS.csv"
+        },
+        "0-DTE-PCS-Tue-Fri-MECH": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PCS-Tue-Fri-MECH.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PCS-Tue-Fri-MECH.csv"
+        },
+        "0-DTE-PM-IC-30-Delta-SMA": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PM-IC-30-Delta-SMA.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PM-IC-30-Delta-SMA.csv"
+        },
+        "0-DTE-PM-PCS-atm-ORB-VIX-filters": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PM-PCS-atm-ORB-VIX-filters.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PM-PCS-atm-ORB-VIX-filters.csv"
+        },
+        "18-45-WED-10-DTE-RIC-SMA-Crossover": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\18-45-WED-10-DTE-RIC-SMA-Crossover.csv"
+        },
+        "CCS-ORB-NO-STOP-": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\CCS-ORB-NO-STOP-.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\CCS-ORB-NO-STOP-.csv"
+        },
+        "Daily-Diagonal-PUT-Baseline-Backtest-DDO-2-10-55Delta": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\Daily-Diagonal-PUT-Baseline-Backtest-DDO-2-10-55Delta.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\Daily-Diagonal-PUT-Baseline-Backtest-DDO-2-10-55Delta.csv"
+        },
+        "FRI-5DTE-PutFLY": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\FRI-5DTE-PutFLY.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\FRI-5DTE-PutFLY.csv"
+        },
+        "Late-AM-SMA-Bull-Call": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\Late-AM-SMA-Bull-Call.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\Late-AM-SMA-Bull-Call.csv"
+        },
+        "WED-9-DTE-Fly-filters-": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\WED-9-DTE-Fly-filters-.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\data\\strategies\\WED-9-DTE-Fly-filters-.csv"
+        }
+      }
+    },
+    {
+      "build_warnings": [],
+      "created_at": "2025-12-18T18:10:59",
+      "dataset": {
+        "max_open_dt": "2025-11-26T14:33:00",
+        "min_open_dt": "2022-05-17T13:15:00",
+        "n_rows": 1819,
+        "n_strategies": 4,
+        "path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\ml\\datasets\\panel__SNAP_20251218_181059__N4.csv",
+        "saved": true,
+        "sha256": "376b3c80d1e247e1519e69c710888d56a3df70f007de6ac4b7c6da67dea87f36"
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH",
+        "0-DTE-Long-AM-CDS",
+        "0-DTE-PCS-Tue-Fri-MECH",
+        "0-DTE-PM-IC-30-Delta-SMA"
+      ],
+      "snapshot_id": "SNAP_20251218_181059",
+      "source_portfolio_id": "ph1::Test1::20251203160050",
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": 0.9,
+        "0-DTE-Long-AM-CDS": 1.2,
+        "0-DTE-PCS-Tue-Fri-MECH": 0.8,
+        "0-DTE-PM-IC-30-Delta-SMA": 1.1
+      },
+      "strategy_sources": {
+        "0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Iron-FLY-NO-Stop-SMA-and-Move-up-MECH.csv"
+        },
+        "0-DTE-Long-AM-CDS": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Long-AM-CDS.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-Long-AM-CDS.csv"
+        },
+        "0-DTE-PCS-Tue-Fri-MECH": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PCS-Tue-Fri-MECH.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PCS-Tue-Fri-MECH.csv"
+        },
+        "0-DTE-PM-IC-30-Delta-SMA": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PM-IC-30-Delta-SMA.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\data\\strategies\\0-DTE-PM-IC-30-Delta-SMA.csv"
+        }
+      }
+    },
+    {
+      "build_warnings": [
+        "[SKIP] Removed 1684 duplicate (open_dt, strategy_uid) rows"
+      ],
+      "created_at": "2025-12-18T18:11:59",
+      "dataset": {
+        "max_open_dt": "2025-12-12T11:00:00",
+        "min_open_dt": "2022-05-16T10:09:00",
+        "n_rows": 4720,
+        "n_strategies": 9,
+        "path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\ml\\datasets\\panel__SNAP_20251218_181159__N9.csv",
+        "saved": true,
+        "sha256": "4d7e7a37afa83ce5398de520c921e1af11d5e9a9135a70c1f4fc46f6c398690a"
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "2025-TrendingPuts-withcalls-Rod",
+        "BB-ORB-buy",
+        "Move-down-IC-neutral-smaller-wing",
+        "Optimized-High-Orb-Gap-Up-3DTE",
+        "RIC-25DTE-Below-SMA-v2",
+        "RIC-7DTE-Under-SMA",
+        "RoD-AM-Countertrend-Condor-10w-put",
+        "RoD-EMA-Skewed-Condors-5-times",
+        "RoD-Triple-Signal-Super-Bull-x3"
+      ],
+      "snapshot_id": "SNAP_20251218_181159",
+      "source_portfolio_id": "ph1::Bank1::20251214101928",
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "2025-TrendingPuts-withcalls-Rod": 1.0,
+        "BB-ORB-buy": 1.0,
+        "Move-down-IC-neutral-smaller-wing": 1.0,
+        "Optimized-High-Orb-Gap-Up-3DTE": 1.0,
+        "RIC-25DTE-Below-SMA-v2": 1.0,
+        "RIC-7DTE-Under-SMA": 1.0,
+        "RoD-AM-Countertrend-Condor-10w-put": 1.0,
+        "RoD-EMA-Skewed-Condors-5-times": 1.0,
+        "RoD-Triple-Signal-Super-Bull-x3": 1.0
+      },
+      "strategy_sources": {
+        "2025-TrendingPuts-withcalls-Rod": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\2025-TrendingPuts-withcalls-Rod.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\2025-TrendingPuts-withcalls-Rod.csv"
+        },
+        "BB-ORB-buy": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\BB-ORB-buy.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\BB-ORB-buy.csv"
+        },
+        "Move-down-IC-neutral-smaller-wing": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\Move-down-IC-neutral-smaller-wing.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\Move-down-IC-neutral-smaller-wing.csv"
+        },
+        "Optimized-High-Orb-Gap-Up-3DTE": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\Optimized-High-Orb-Gap-Up-3DTE.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\Optimized-High-Orb-Gap-Up-3DTE.csv"
+        },
+        "RIC-25DTE-Below-SMA-v2": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RIC-25DTE-Below-SMA-v2.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RIC-25DTE-Below-SMA-v2.csv"
+        },
+        "RIC-7DTE-Under-SMA": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RIC-7DTE-Under-SMA.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RIC-7DTE-Under-SMA.csv"
+        },
+        "RoD-AM-Countertrend-Condor-10w-put": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-AM-Countertrend-Condor-10w-put.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-AM-Countertrend-Condor-10w-put.csv"
+        },
+        "RoD-EMA-Skewed-Condors-5-times": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-EMA-Skewed-Condors-5-times.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-EMA-Skewed-Condors-5-times.csv"
+        },
+        "RoD-Triple-Signal-Super-Bull-x3": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-Triple-Signal-Super-Bull-x3.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-Triple-Signal-Super-Bull-x3.csv"
+        }
+      }
+    },
+    {
+      "build_warnings": [],
+      "created_at": "2025-12-18T18:54:26",
+      "dataset": {
+        "max_open_dt": "2025-12-12T11:00:00",
+        "min_open_dt": "2022-05-16T10:09:00",
+        "n_rows": 3036,
+        "n_strategies": 8,
+        "path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\ml\\datasets\\panel__SNAP_20251218_185426__N8.csv",
+        "saved": true,
+        "sha256": "4f464ff48e44174be31bae913b869ec1979b5a65a8cefafc81752a0e814b85b9"
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "BB-ORB-buy",
+        "Move-down-IC-neutral-smaller-wing",
+        "Optimized-High-Orb-Gap-Up-3DTE",
+        "RIC-25DTE-Below-SMA-v2",
+        "RIC-7DTE-Under-SMA",
+        "RoD-AM-Countertrend-Condor-10w-put",
+        "RoD-EMA-Skewed-Condors-5-times",
+        "RoD-Triple-Signal-Super-Bull-x3"
+      ],
+      "snapshot_id": "SNAP_20251218_185426",
+      "source_portfolio_id": "ph1::Bank1::20251214101928",
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "BB-ORB-buy": 1.0,
+        "Move-down-IC-neutral-smaller-wing": 1.0,
+        "Optimized-High-Orb-Gap-Up-3DTE": 1.0,
+        "RIC-25DTE-Below-SMA-v2": 1.0,
+        "RIC-7DTE-Under-SMA": 1.0,
+        "RoD-AM-Countertrend-Condor-10w-put": 1.0,
+        "RoD-EMA-Skewed-Condors-5-times": 1.0,
+        "RoD-Triple-Signal-Super-Bull-x3": 1.0
+      },
+      "strategy_sources": {
+        "BB-ORB-buy": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\BB-ORB-buy.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\BB-ORB-buy.csv"
+        },
+        "Move-down-IC-neutral-smaller-wing": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\Move-down-IC-neutral-smaller-wing.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\Move-down-IC-neutral-smaller-wing.csv"
+        },
+        "Optimized-High-Orb-Gap-Up-3DTE": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\Optimized-High-Orb-Gap-Up-3DTE.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\Optimized-High-Orb-Gap-Up-3DTE.csv"
+        },
+        "RIC-25DTE-Below-SMA-v2": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RIC-25DTE-Below-SMA-v2.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RIC-25DTE-Below-SMA-v2.csv"
+        },
+        "RIC-7DTE-Under-SMA": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RIC-7DTE-Under-SMA.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RIC-7DTE-Under-SMA.csv"
+        },
+        "RoD-AM-Countertrend-Condor-10w-put": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-AM-Countertrend-Condor-10w-put.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-AM-Countertrend-Condor-10w-put.csv"
+        },
+        "RoD-EMA-Skewed-Condors-5-times": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-EMA-Skewed-Condors-5-times.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-EMA-Skewed-Condors-5-times.csv"
+        },
+        "RoD-Triple-Signal-Super-Bull-x3": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-Triple-Signal-Super-Bull-x3.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-Triple-Signal-Super-Bull-x3.csv"
+        }
+      }
+    },
+    {
+      "build_warnings": [
+        "[WARN] Found 1684 rows with duplicate (open_dt, strategy_uid) keys; no rows removed."
+      ],
+      "created_at": "2025-12-18T19:50:00",
+      "dataset": {
+        "max_open_dt": "2025-12-12T11:00:00",
+        "min_open_dt": "2022-05-16T10:09:00",
+        "n_rows": 6404,
+        "n_strategies": 9,
+        "path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\ml\\datasets\\panel__SNAP_20251218_194959__N9.csv",
+        "saved": true,
+        "sha256": "92117948280ccbb568d165d50bc15bff3bf011b77a2a8c19200b612eefd792d5"
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "2025-TrendingPuts-withcalls-Rod",
+        "BB-ORB-buy",
+        "Move-down-IC-neutral-smaller-wing",
+        "Optimized-High-Orb-Gap-Up-3DTE",
+        "RIC-25DTE-Below-SMA-v2",
+        "RIC-7DTE-Under-SMA",
+        "RoD-AM-Countertrend-Condor-10w-put",
+        "RoD-EMA-Skewed-Condors-5-times",
+        "RoD-Triple-Signal-Super-Bull-x3"
+      ],
+      "snapshot_id": "SNAP_20251218_194959",
+      "source_portfolio_id": "ph1::Bank1::20251214101928",
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "2025-TrendingPuts-withcalls-Rod": 1.0,
+        "BB-ORB-buy": 1.0,
+        "Move-down-IC-neutral-smaller-wing": 1.0,
+        "Optimized-High-Orb-Gap-Up-3DTE": 1.0,
+        "RIC-25DTE-Below-SMA-v2": 1.0,
+        "RIC-7DTE-Under-SMA": 1.0,
+        "RoD-AM-Countertrend-Condor-10w-put": 1.0,
+        "RoD-EMA-Skewed-Condors-5-times": 1.0,
+        "RoD-Triple-Signal-Super-Bull-x3": 1.0
+      },
+      "strategy_sources": {
+        "2025-TrendingPuts-withcalls-Rod": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\2025-TrendingPuts-withcalls-Rod.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\2025-TrendingPuts-withcalls-Rod.csv"
+        },
+        "BB-ORB-buy": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\BB-ORB-buy.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\BB-ORB-buy.csv"
+        },
+        "Move-down-IC-neutral-smaller-wing": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\Move-down-IC-neutral-smaller-wing.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\Move-down-IC-neutral-smaller-wing.csv"
+        },
+        "Optimized-High-Orb-Gap-Up-3DTE": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\Optimized-High-Orb-Gap-Up-3DTE.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\Optimized-High-Orb-Gap-Up-3DTE.csv"
+        },
+        "RIC-25DTE-Below-SMA-v2": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RIC-25DTE-Below-SMA-v2.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RIC-25DTE-Below-SMA-v2.csv"
+        },
+        "RIC-7DTE-Under-SMA": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RIC-7DTE-Under-SMA.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RIC-7DTE-Under-SMA.csv"
+        },
+        "RoD-AM-Countertrend-Condor-10w-put": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-AM-Countertrend-Condor-10w-put.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-AM-Countertrend-Condor-10w-put.csv"
+        },
+        "RoD-EMA-Skewed-Condors-5-times": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-EMA-Skewed-Condors-5-times.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-EMA-Skewed-Condors-5-times.csv"
+        },
+        "RoD-Triple-Signal-Super-Bull-x3": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-Triple-Signal-Super-Bull-x3.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Bank1\\RoD-Triple-Signal-Super-Bull-x3.csv"
+        }
+      }
+    },
+    {
+      "build_warnings": [
+        "[SKIP] uid=RoD-EMA-Skewed-Condors-5-times_20251215121524 missing required columns: ['Opening VIX']"
+      ],
+      "created_at": "2025-12-20T07:58:09",
+      "dataset": {
+        "max_open_dt": "2025-12-15T10:59:00",
+        "min_open_dt": "2022-05-16T10:09:00",
+        "n_rows": 7907,
+        "n_strategies": 23,
+        "path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\ml\\datasets\\panel__SNAP_20251220_075809__N23.csv",
+        "saved": true,
+        "sha256": "015425d184a2ca15e8dd079ddff9bafa8e60e8aeb90166327d86205d0c200b56"
+      },
+      "rules": {
+        "feature_columns": [
+          "dow",
+          "open_minute",
+          "opening_price",
+          "premium",
+          "margin_req",
+          "opening_vix",
+          "gap"
+        ],
+        "label_definition": "label = 1 if pnl_R > 0 else 0",
+        "leakage_policy": "Final dataset excludes all close-related columns and lifecycle extrema.",
+        "risk_unit_definition": "risk_unit = margin_req * contracts",
+        "target_columns": [
+          "pnl",
+          "contracts",
+          "risk_unit",
+          "pnl_R",
+          "label"
+        ],
+        "version": "v1"
+      },
+      "selected_uids": [
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00-v2",
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00_20251215121524",
+        "2025-MorningCalls-3Signals-rod-v2",
+        "3DTE-Weekend-Condor-Early-Exit_20251216120801",
+        "7DTE-Mon-Tues-SMA-Put-Spread_20251216120801",
+        "9-Day-IC-VIX-9D-0-90-",
+        "Afternoon-SMA-Condor-x2",
+        "Big-Drop-Call-Spread",
+        "EOD-Move-Up_20251216120801",
+        "Emet-All-Signs-Down-Tranches-JH-edits",
+        "Emet-via-OO-Best-Long-0DTE-B",
+        "Long-Put-5D-Vix-25-Vix-down_20251216120801",
+        "Long-Puts-EOD-Flat-Market-v2",
+        "Main-IF-No-Ge",
+        "Optimized-High-Orb-Gap-Up-3DTE_20251215121524",
+        "RIC-10-25-12-30-VIX-Move-Down-S-L-Ratio",
+        "RIC-7DTE-Under-SMA_20251216120801",
+        "RoD-0DTE-Iron-Fly-Mon-Fri-1030_20251216120800",
+        "RoD-AM-Call-Spread-3-times",
+        "RoD-AM-Countertrend-Condor-10w-put_20251215121524",
+        "RoD-EMA-Skewed-Condors-5-times_20251215121524",
+        "RoD-RIC-9_20251216120801",
+        "Short-calls-all-day-v2",
+        "Sma_crossover_rod_20251215090554"
+      ],
+      "snapshot_id": "SNAP_20251220_075809",
+      "source_portfolio_id": "ph1::Em01::20251215085538",
+      "source_portfolio_name": null,
+      "strategy_factors": {
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00-v2": 3.0,
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00_20251215121524": 3.0,
+        "2025-MorningCalls-3Signals-rod-v2": 3.0,
+        "3DTE-Weekend-Condor-Early-Exit_20251216120801": 1.0,
+        "7DTE-Mon-Tues-SMA-Put-Spread_20251216120801": 1.0,
+        "9-Day-IC-VIX-9D-0-90-": 3.0,
+        "Afternoon-SMA-Condor-x2": 2.0,
+        "Big-Drop-Call-Spread": 1.0,
+        "EOD-Move-Up_20251216120801": 2.0,
+        "Emet-All-Signs-Down-Tranches-JH-edits": 2.0,
+        "Emet-via-OO-Best-Long-0DTE-B": 1.0,
+        "Long-Put-5D-Vix-25-Vix-down_20251216120801": 2.0,
+        "Long-Puts-EOD-Flat-Market-v2": 3.0,
+        "Main-IF-No-Ge": 2.0,
+        "Optimized-High-Orb-Gap-Up-3DTE_20251215121524": 2.0,
+        "RIC-10-25-12-30-VIX-Move-Down-S-L-Ratio": 3.0,
+        "RIC-7DTE-Under-SMA_20251216120801": 1.0,
+        "RoD-0DTE-Iron-Fly-Mon-Fri-1030_20251216120800": 3.0,
+        "RoD-AM-Call-Spread-3-times": 2.0,
+        "RoD-AM-Countertrend-Condor-10w-put_20251215121524": 1.0,
+        "RoD-EMA-Skewed-Condors-5-times_20251215121524": 2.0,
+        "RoD-RIC-9_20251216120801": 3.0,
+        "Short-calls-all-day-v2": 3.0,
+        "Sma_crossover_rod_20251215090554": 1.0
+      },
+      "strategy_sources": {
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00-v2": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\-WM-5DTE-CHUD-Put-BFly-FRI-2-00-v2.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\-WM-5DTE-CHUD-Put-BFly-FRI-2-00-v2.csv"
+        },
+        "-WM-5DTE-CHUD-Put-BFly-FRI-2-00_20251215121524": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\dataupl\\-WM-5DTE-CHUD-Put-BFly-FRI-2-00_20251215121524.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\dataupl\\-WM-5DTE-CHUD-Put-BFly-FRI-2-00_20251215121524.csv"
+        },
+        "2025-MorningCalls-3Signals-rod-v2": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\2025-MorningCalls-3Signals-rod-v2.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\2025-MorningCalls-3Signals-rod-v2.csv"
+        },
+        "3DTE-Weekend-Condor-Early-Exit_20251216120801": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\3DTE-Weekend-Condor-Early-Exit_20251216120801.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\3DTE-Weekend-Condor-Early-Exit_20251216120801.csv"
+        },
+        "7DTE-Mon-Tues-SMA-Put-Spread_20251216120801": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\7DTE-Mon-Tues-SMA-Put-Spread_20251216120801.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\7DTE-Mon-Tues-SMA-Put-Spread_20251216120801.csv"
+        },
+        "9-Day-IC-VIX-9D-0-90-": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\9-Day-IC-VIX-9D-0-90-.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\9-Day-IC-VIX-9D-0-90-.csv"
+        },
+        "Afternoon-SMA-Condor-x2": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\Afternoon-SMA-Condor-x2.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\Afternoon-SMA-Condor-x2.csv"
+        },
+        "Big-Drop-Call-Spread": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\Big-Drop-Call-Spread.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\Big-Drop-Call-Spread.csv"
+        },
+        "EOD-Move-Up_20251216120801": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\EOD-Move-Up_20251216120801.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\EOD-Move-Up_20251216120801.csv"
+        },
+        "Emet-All-Signs-Down-Tranches-JH-edits": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\Emet-All-Signs-Down-Tranches-JH-edits.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\Emet-All-Signs-Down-Tranches-JH-edits.csv"
+        },
+        "Emet-via-OO-Best-Long-0DTE-B": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\Emet-via-OO-Best-Long-0DTE-B.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\Emet-via-OO-Best-Long-0DTE-B.csv"
+        },
+        "Long-Put-5D-Vix-25-Vix-down_20251216120801": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\Long-Put-5D-Vix-25-Vix-down_20251216120801.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\Long-Put-5D-Vix-25-Vix-down_20251216120801.csv"
+        },
+        "Long-Puts-EOD-Flat-Market-v2": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\Long-Puts-EOD-Flat-Market-v2.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\Long-Puts-EOD-Flat-Market-v2.csv"
+        },
+        "Main-IF-No-Ge": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\Main-IF-No-Ge.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\Main-IF-No-Ge.csv"
+        },
+        "Optimized-High-Orb-Gap-Up-3DTE_20251215121524": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\dataupl\\Optimized-High-Orb-Gap-Up-3DTE_20251215121524.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\dataupl\\Optimized-High-Orb-Gap-Up-3DTE_20251215121524.csv"
+        },
+        "RIC-10-25-12-30-VIX-Move-Down-S-L-Ratio": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\RIC-10-25-12-30-VIX-Move-Down-S-L-Ratio.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\RIC-10-25-12-30-VIX-Move-Down-S-L-Ratio.csv"
+        },
+        "RIC-7DTE-Under-SMA_20251216120801": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\RIC-7DTE-Under-SMA_20251216120801.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\RIC-7DTE-Under-SMA_20251216120801.csv"
+        },
+        "RoD-0DTE-Iron-Fly-Mon-Fri-1030_20251216120800": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\RoD-0DTE-Iron-Fly-Mon-Fri-1030_20251216120800.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\RoD-0DTE-Iron-Fly-Mon-Fri-1030_20251216120800.csv"
+        },
+        "RoD-AM-Call-Spread-3-times": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\RoD-AM-Call-Spread-3-times.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\RoD-AM-Call-Spread-3-times.csv"
+        },
+        "RoD-AM-Countertrend-Condor-10w-put_20251215121524": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\dataupl\\RoD-AM-Countertrend-Condor-10w-put_20251215121524.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\dataupl\\RoD-AM-Countertrend-Condor-10w-put_20251215121524.csv"
+        },
+        "RoD-EMA-Skewed-Condors-5-times_20251215121524": {
+          "resolution_mode": "as_is",
+          "resolved_path": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\dataupl\\RoD-EMA-Skewed-Condors-5-times_20251215121524.csv",
+          "strategy_id": "c:\\users\\mauro\\mauro\\spyder\\portfolio26\\core\\dataupl\\RoD-EMA-Skewed-Condors-5-times_20251215121524.csv"
+        },
+        "RoD-RIC-9_20251216120801": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\RoD-RIC-9_20251216120801.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\RoD-RIC-9_20251216120801.csv"
+        },
+        "Short-calls-all-day-v2": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\Short-calls-all-day-v2.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Options Trading\\TradeBusters\\Portfolio26\\Phase1\\Em1\\Short-calls-all-day-v2.csv"
+        },
+        "Sma_crossover_rod_20251215090554": {
+          "resolution_mode": "as_is",
+          "resolved_path": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\Sma_crossover_rod_20251215090554.csv",
+          "strategy_id": "C:\\Users\\mauro\\MAURO\\Spyder\\Portfolio26\\core\\dataupl\\Sma_crossover_rod_20251215090554.csv"
+        }
+      }
+    }
+  ],
+  "version": 1
+}

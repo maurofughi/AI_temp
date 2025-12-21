@@ -14,11 +14,13 @@ from datetime import datetime
 
 import pandas as pd
 import dash_bootstrap_components as dbc
-from dash import html, dcc, callback
+from dash import html, dcc, callback, ctx
 from dash.dependencies import Input, Output, State
 from dash import dash_table
 
 from ml.ml1 import RunParams, run_fwa_single
+from ml.ml2 import RunParamsWeekly, run_fwa_weekly
+
 
 
 # -----------------------------------------------------------------------------
@@ -117,6 +119,42 @@ def build_ml_cpo_right_panel():
                                             ],
                                             className="g-2",
                                         ),
+                                        #here
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    dbc.ButtonGroup(
+                                                        [
+                                                            dbc.Button(
+                                                                "Monthly (Static)",
+                                                                id="mlcpo-mode-monthly-btn",
+                                                                n_clicks=0,
+                                                                color="primary",
+                                                                size="sm",
+                                                            ),
+                                                            dbc.Button(
+                                                                "Weekly (CPO)",
+                                                                id="mlcpo-mode-weekly-btn",
+                                                                n_clicks=0,
+                                                                color="secondary",
+                                                                size="sm",
+                                                            ),
+                                                        ]
+                                                    ),
+                                                    width="auto",
+                                                ),
+                                                dbc.Col(
+                                                    html.Div(
+                                                        id="mlcpo-mode-hint",
+                                                        children="Mode: Monthly (Static)",
+                                                        style={"color": "rgba(255,255,255,0.7)", "paddingTop": "6px"},
+                                                    )
+                                                ),
+                                            ],
+                                            className="g-2",
+                                            style={"marginTop": "6px", "marginBottom": "6px"},
+                                        ),
+
                                         html.Hr(className="my-2"),
 
                                         dbc.Row(
@@ -160,6 +198,7 @@ def build_ml_cpo_right_panel():
                                             ],
                                             className="g-2",
                                         ),
+                                        # ---- IS + Anchored (always visible) ----
                                         dbc.Row(
                                             [
                                                 dbc.Col(
@@ -176,45 +215,7 @@ def build_ml_cpo_right_panel():
                                                                 "backgroundColor": "#1e1e1e",
                                                                 "color": "white",
                                                                 "border": "1px solid #444",
-                                                            }
-                                                        ),
-                                                    ],
-                                                    width=3,
-                                                ),
-                                                dbc.Col(
-                                                    [
-                                                        dbc.Label("OoS months"),
-                                                        dbc.Input(
-                                                            id="mlcpo-oos-months",
-                                                            type="number",
-                                                            value=1,
-                                                            min=1,
-                                                            step=1,
-                                                            size="sm",
-                                                            style={
-                                                                "backgroundColor": "#1e1e1e",
-                                                                "color": "white",
-                                                                "border": "1px solid #444",
-                                                            }
-                                                        ),
-                                                    ],
-                                                    width=3,
-                                                ),
-                                                dbc.Col(
-                                                    [
-                                                        dbc.Label("Step months"),
-                                                        dbc.Input(
-                                                            id="mlcpo-step-months",
-                                                            type="number",
-                                                            value=1,
-                                                            min=1,
-                                                            step=1,
-                                                            size="sm",
-                                                            style={
-                                                                "backgroundColor": "#1e1e1e",
-                                                                "color": "white",
-                                                                "border": "1px solid #444",
-                                                            }
+                                                            },
                                                         ),
                                                     ],
                                                     width=3,
@@ -233,10 +234,112 @@ def build_ml_cpo_right_panel():
                                                             style={"fontSize": "0.85rem"},
                                                         ),
                                                     ],
-                                                    width=3,
+                                                    width=9,
                                                 ),
                                             ],
                                             className="g-2 mt-1",
+                                        ),
+                                        
+                                        # ---- Monthly params container (shown in Monthly mode) ----
+                                        html.Div(
+                                            id="mlcpo-monthly-params",
+                                            style={"display": "block"},
+                                            children=[
+                                                dbc.Row(
+                                                    [
+                                                        dbc.Col(
+                                                            [
+                                                                dbc.Label("OoS months"),
+                                                                dbc.Input(
+                                                                    id="mlcpo-oos-months",
+                                                                    type="number",
+                                                                    value=1,
+                                                                    min=1,
+                                                                    step=1,
+                                                                    size="sm",
+                                                                    style={
+                                                                        "backgroundColor": "#1e1e1e",
+                                                                        "color": "white",
+                                                                        "border": "1px solid #444",
+                                                                    },
+                                                                ),
+                                                            ],
+                                                            width=3,
+                                                        ),
+                                                        dbc.Col(
+                                                            [
+                                                                dbc.Label("Step months"),
+                                                                dbc.Input(
+                                                                    id="mlcpo-step-months",
+                                                                    type="number",
+                                                                    value=1,
+                                                                    min=1,
+                                                                    step=1,
+                                                                    size="sm",
+                                                                    style={
+                                                                        "backgroundColor": "#1e1e1e",
+                                                                        "color": "white",
+                                                                        "border": "1px solid #444",
+                                                                    },
+                                                                ),
+                                                            ],
+                                                            width=3,
+                                                        ),
+                                                    ],
+                                                    className="g-2 mt-1",
+                                                )
+                                            ],
+                                        ),
+                                        
+                                        # ---- Weekly params container (shown in Weekly mode) ----
+                                        html.Div(
+                                            id="mlcpo-weekly-params",
+                                            style={"display": "none"},
+                                            children=[
+                                                dbc.Row(
+                                                    [
+                                                        dbc.Col(
+                                                            [
+                                                                dbc.Label("OoS weeks"),
+                                                                dbc.Input(
+                                                                    id="mlcpo-oos-weeks",
+                                                                    type="number",
+                                                                    value=1,
+                                                                    min=1,
+                                                                    step=1,
+                                                                    size="sm",
+                                                                    style={
+                                                                        "backgroundColor": "#1e1e1e",
+                                                                        "color": "white",
+                                                                        "border": "1px solid #444",
+                                                                    },
+                                                                ),
+                                                            ],
+                                                            width=3,
+                                                        ),
+                                                        dbc.Col(
+                                                            [
+                                                                dbc.Label("Step weeks"),
+                                                                dbc.Input(
+                                                                    id="mlcpo-step-weeks",
+                                                                    type="number",
+                                                                    value=1,
+                                                                    min=1,
+                                                                    step=1,
+                                                                    size="sm",
+                                                                    style={
+                                                                        "backgroundColor": "#1e1e1e",
+                                                                        "color": "white",
+                                                                        "border": "1px solid #444",
+                                                                    },
+                                                                ),
+                                                            ],
+                                                            width=3,
+                                                        ),
+                                                    ],
+                                                    className="g-2 mt-1",
+                                                )
+                                            ],
                                         ),
 
                                         dbc.Row(
@@ -291,7 +394,7 @@ def build_ml_cpo_right_panel():
                             ],
                             className="mb-3",
                         ),
-                        width=5,
+                        width=6,
                     ),
 
                     # Right/top: summary box
@@ -300,28 +403,35 @@ def build_ml_cpo_right_panel():
                             [
                                 dbc.CardHeader("Run Summary"),
                                 dbc.CardBody(
-                                    [
-                                        dbc.Alert(
-                                            "No run yet.",
-                                            id="mlcpo-status",
-                                            color="secondary",
-                                            className="mb-2",
-                                        ),
-                                        html.Pre(
-                                            "",
-                                            id="mlcpo-summary-text",
-                                            style={
-                                                "whiteSpace": "pre-wrap",
-                                                "fontSize": "0.85rem",
-                                                "marginBottom": "0",
-                                            },
-                                        ),
-                                    ]
+                                    dbc.Spinner(
+                                        [
+                                            dbc.Alert(
+                                                "No run yet.",
+                                                id="mlcpo-status",
+                                                color="secondary",
+                                                className="mb-2",
+                                            ),
+                                            html.Pre(
+                                                "",
+                                                id="mlcpo-summary-text",
+                                                style={
+                                                    "whiteSpace": "pre-wrap",
+                                                    "fontSize": "0.85rem",
+                                                    "marginBottom": "0",
+                                                    "minHeight": "120px",
+                                                },
+                                            ),
+                                        ],
+                                        size="sm",
+                                        color="primary",
+                                        fullscreen=False,
+                                    )
                                 ),
+
                             ],
                             className="mb-3",
                         ),
-                        width=7,
+                        width=6,
                     ),
                 ],
                 className="g-3",
@@ -386,7 +496,7 @@ def build_ml_cpo_right_panel():
                     ),
                 ]
             ),
-
+            dcc.Store(id="mlcpo-mode", data="monthly"),
             # Store last run results (meta only)
             dcc.Store(id="mlcpo-last-run-meta", data=None),
         ],
@@ -408,6 +518,49 @@ def mlcpo_refresh_datasets(_n):
 
 
 @callback(
+    Output("mlcpo-mode", "data"),
+    Output("mlcpo-monthly-params", "style"),
+    Output("mlcpo-weekly-params", "style"),
+    Output("mlcpo-mode-hint", "children"),
+    Output("mlcpo-run-btn", "children"),
+    Output("mlcpo-mode-monthly-btn", "color"),
+    Output("mlcpo-mode-weekly-btn", "color"),
+    Input("mlcpo-mode-monthly-btn", "n_clicks"),
+    Input("mlcpo-mode-weekly-btn", "n_clicks"),
+    State("mlcpo-mode", "data"),
+    prevent_initial_call=False,
+)
+def mlcpo_set_mode(n_monthly, n_weekly, current_mode):
+    trig = ctx.triggered_id
+
+    # Initial page load: keep current_mode (defaults to "monthly")
+    mode = current_mode or "monthly"
+    if trig == "mlcpo-mode-monthly-btn":
+        mode = "monthly"
+    elif trig == "mlcpo-mode-weekly-btn":
+        mode = "weekly"
+
+    if mode == "weekly":
+        monthly_style = {"display": "none"}
+        weekly_style = {"display": "block"}
+        hint = "Mode: Weekly (CPO)"
+        run_label = "Run ML (Weekly CPO)"
+        monthly_color = "secondary"
+        weekly_color = "primary"
+    else:
+        monthly_style = {"display": "block"}
+        weekly_style = {"display": "none"}
+        hint = "Mode: Monthly (Static)"
+        run_label = "Run ML (Monthly Static)"
+        monthly_color = "primary"
+        weekly_color = "secondary"
+
+    return mode, monthly_style, weekly_style, hint, run_label, monthly_color, weekly_color
+
+
+
+
+@callback(
     Output("mlcpo-status", "children"),
     Output("mlcpo-status", "color"),
     Output("mlcpo-summary-text", "children"),
@@ -426,6 +579,10 @@ def mlcpo_refresh_datasets(_n):
     State("mlcpo-anchored-type", "value"),
     State("mlcpo-selection-mode", "value"),
     State("mlcpo-top-k", "value"),
+    State("mlcpo-mode", "data"),
+    State("mlcpo-oos-weeks", "value"),
+    State("mlcpo-step-weeks", "value"),
+    running=[(Output("mlcpo-run-btn", "disabled"), True, False)],
     prevent_initial_call=True,
 )
 def mlcpo_run_fwa(
@@ -439,6 +596,9 @@ def mlcpo_run_fwa(
     anchored_type,
     selection_mode,
     top_k,
+    mode,
+    oos_weeks,
+    step_weeks,
 ):
     
     print("ML CPO dataset_path =", repr(dataset_path))
@@ -462,21 +622,50 @@ def mlcpo_run_fwa(
     end_date = (end_date or "").strip() or None
 
     if selection_mode != "topk_per_day":
-        return ("ERROR: Unsupported selection mode.", "danger", "", [], [], None)
+        return (
+            "ERROR: Unsupported selection mode.",
+            "danger",
+            "",
+            [],
+            [],
+            [],
+            [],
+            None,
+        )
 
     try:
-        params = RunParams(
-            dataset_csv_path=dataset_path,
-            start_date=start_date,
-            end_date=end_date,
-            is_months=int(is_months),
-            oos_months=int(oos_months),
-            anchored_type=str(anchored_type or "U"),
-            step_months=int(step_months),
-            top_k_per_day=int(top_k),
-            verbose_cycles=False,  # UI should not spam console
-        )
-        out = run_fwa_single(params)
+        mode = (mode or "monthly").strip().lower()
+
+        if mode == "weekly":
+            # Weekly CPO (ml2): IS in months, OoS/Step in weeks
+            params2 = RunParamsWeekly(
+                dataset_csv_path=dataset_path,
+                start_date=start_date,
+                end_date=end_date,
+                is_months=int(is_months),
+                oos_weeks=int(oos_weeks),
+                step_weeks=int(step_weeks),
+                anchored_type=str(anchored_type or "U"),
+                top_k_per_day=int(top_k),
+                verbose_cycles=False,  # UI should not spam console
+            )
+            out = run_fwa_weekly(params2)
+
+        else:
+            # Monthly Static (ml1): IS/OoS/Step in months
+            params1 = RunParams(
+                dataset_csv_path=dataset_path,
+                start_date=start_date,
+                end_date=end_date,
+                is_months=int(is_months),
+                oos_months=int(oos_months),
+                anchored_type=str(anchored_type or "U"),
+                step_months=int(step_months),
+                top_k_per_day=int(top_k),
+                verbose_cycles=False,  # UI should not spam console
+            )
+            out = run_fwa_single(params1)
+
 
         bm = out.get("baseline_metrics", {}) or {}
         mm = out.get("ml_metrics", {}) or {}

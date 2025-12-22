@@ -1,27 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu Dec 18 12:15:55 2025
+Created on Sun Dec 21 13:58:24 2025
 
 @author: mauro
 
+Standalone Optuna runner for Portfolio26 Phase 3 ML weekly CPO
+ENGINE = EXACT ml2.py CONTENT (inline), NO imports of other APP modules.
 
-Portfolio26 - Phase 3 ML
-ml2.py
-
-Weekly CPO (approx) Walk-Forward Analysis (FWA) using LightGBM classifier.
-
-Key differences vs ml1.py:
-- IS window length remains in MONTHS, but cadence is WEEKLY (end-of-week Friday).
-- OoS window is in WEEKS (e.g., 1 week ahead).
-- Step is in WEEKS (must be >= OoS weeks to avoid overlap double-counting).
-- Selection is Top-K STRATEGIES per DAY (not trades).
-- Builds a synthetic OoS prediction panel by re-applying estimated market features
-  + strategy typical features (from IS) across OoS trading days.
-
-Leakage rules preserved:
-- IS training slice filtered by close_dt (information availability)
-- OoS candidates filtered by open_dt (decision time)
-- Equity stitched by close_dt (real DD/path)
+- Objective: maximize ml_metrics["pcr"] (Premium Capture Rate)
+- Logs: one CSV row per trial with seed + hyperparams + stitched final metrics
+- Console: one line per trial (no LightGBM / cycle spam) via stdout/stderr suppression
 """
 
 from __future__ import annotations
@@ -37,12 +25,6 @@ try:
 except Exception as e:
     LGBMClassifier = None
     _LGBM_IMPORT_ERROR = e
-    
-# ---------------------------------------------------------------------
-# Global RNG seed for feature randomization (price, VIX, gap, etc.)
-# ---------------------------------------------------------------------
-RANDOM_SEED = 391176743  # change this if you want different random paths
-
 
 # -------------------------
 # Parameters
@@ -72,11 +54,10 @@ class RunParamsWeekly:
 
     verbose_cycles: bool = True
     initial_equity: float = 100000.0
-    
+
     # diagnostics
     debug_cycle_to_print: Optional[int] = 10   # e.g., 10 to print cycle 10
-    debug_max_rows: int = 40                     # cap printed rows per table
-
+    debug_max_rows: int = 40                   # cap printed rows per table
 
 
 # Keep consistent with ml1.py columns
@@ -99,7 +80,6 @@ PREMIUM_COL = "premium"
 # Utils: date parsing
 # -------------------------
 def _to_ts_date(d: str) -> pd.Timestamp:
-    # normalize to date-only midnight
     return pd.Timestamp(d).normalize()
 
 
@@ -108,10 +88,6 @@ def _date_floor_from_dt(s: pd.Series) -> pd.Series:
 
 
 def _make_week_table(trading_dates: pd.Series) -> pd.DataFrame:
-    """
-    trading_dates: Series[Timestamp normalized] unique trading days.
-    Returns weeks with week_id (period W-FRI) and actual week_start/week_end (trading days).
-    """
     d = pd.Series(pd.to_datetime(trading_dates, errors="coerce")).dropna().dt.normalize()
     if d.empty:
         return pd.DataFrame(columns=["week_id", "week_start", "week_end"])
@@ -135,37 +111,21 @@ def _compute_cycles_weekly(
     data_end: pd.Timestamp,
     weeks_df: pd.DataFrame
 ) -> pd.DataFrame:
-    """
-    Build weekly cycles:
-
-    - OoS is defined by week blocks (W-FRI groups) on OPEN dates.
-    - IS_end = day before OoS_start.
-    - IS_start:
-        Anchored: fixed at overall start
-        Unanchored: IS_start = IS_end - is_months + 1 day (month-offset)
-    """
     if params.step_weeks < params.oos_weeks:
         raise ValueError("Invalid parameters: step_weeks must be >= oos_weeks to avoid overlapping OoS windows.")
 
-    # Overall bounds
     start = _to_ts_date(params.start_date) if params.start_date else data_start.normalize()
     end = _to_ts_date(params.end_date) if params.end_date else data_end.normalize()
 
-    # clamp to available data
     start = max(start, data_start.normalize())
     end = min(end, data_end.normalize())
 
     if weeks_df.empty:
         return pd.DataFrame(columns=["cycle", "IS_from", "IS_to", "OoS_from", "OoS_to"])
 
-    # Find the first OoS week such that IS_end has at least is_months history from start
     earliest_is_end = (start + pd.DateOffset(months=params.is_months)) - pd.Timedelta(days=1)
-
-    # OoS_start is week_start; IS_end is OoS_start-1
-    # Need IS_end >= earliest_is_end  => OoS_start >= earliest_is_end + 1
     first_oos_start_min = earliest_is_end + pd.Timedelta(days=1)
 
-    # choose first week whose week_start >= that threshold
     candidate_idx = weeks_df.index[weeks_df["week_start"] >= first_oos_start_min]
     if len(candidate_idx) == 0:
         return pd.DataFrame(columns=["cycle", "IS_from", "IS_to", "OoS_from", "OoS_to"])
@@ -209,7 +169,6 @@ def _compute_cycles_weekly(
             }
         )
 
-        # advance
         i += params.step_weeks
         safety += 1
         if safety > 2000:
@@ -265,35 +224,7 @@ def _pcr_from_pnl_and_premium(pnl: pd.Series, premium: pd.Series) -> float:
     total_abs_prem = float(premium.abs().sum())
     if total_abs_prem == 0.0:
         return np.nan
-    return total_pnl / total_abs_prem  # fraction
-
-
-def _build_equity_dd_series(trades: pd.DataFrame, initial_equity: float) -> pd.DataFrame:
-    """
-    Builds daily equity & drawdown series from realized P&L by close date.
-    Returns a dataframe with:
-      date, pnl, equity, dd, dd_pct
-    """
-    if trades is None or trades.empty:
-        return pd.DataFrame(columns=["date", "pnl", "equity", "dd", "dd_pct"])
-
-    t = trades.copy()
-    t["close_date"] = t["close_dt"].dt.normalize()
-
-    daily = (
-        t.groupby("close_date", as_index=False)[PNL_COL]
-         .sum()
-         .rename(columns={"close_date": "date", PNL_COL: "pnl"})
-         .sort_values("date")
-         .reset_index(drop=True)
-    )
-
-    daily["equity"] = float(initial_equity) + daily["pnl"].cumsum()
-    daily["peak"] = daily["equity"].cummax()
-    daily["dd"] = daily["equity"] - daily["peak"]
-    daily["dd_pct"] = np.where(daily["peak"] != 0, daily["dd"] / daily["peak"], np.nan)
-
-    return daily[["date", "pnl", "equity", "dd", "dd_pct"]]
+    return total_pnl / total_abs_prem
 
 
 def _compute_metrics(trades: pd.DataFrame, initial_equity: float) -> Dict[str, Any]:
@@ -321,7 +252,7 @@ def _compute_metrics(trades: pd.DataFrame, initial_equity: float) -> Dict[str, A
     dd = eq - peak
 
     max_dd_dollar = float(dd.min()) if len(dd) else 0.0
-    max_dd_pct = float((dd / peak).min()) if len(dd) else 0.0  # negative fraction
+    max_dd_pct = float((dd / peak).min()) if len(dd) else 0.0
 
     daily_ret = daily[PNL_COL] / float(initial_equity)
     sharpe = _annualized_sharpe(daily_ret)
@@ -361,99 +292,6 @@ def _compute_metrics(trades: pd.DataFrame, initial_equity: float) -> Dict[str, A
     }
 
 
-def _q(x: pd.Series, q: float) -> float:
-    if x is None or x.empty:
-        return np.nan
-    return float(x.quantile(q))
-
-
-def _compute_participation_metrics(
-    trades: pd.DataFrame,
-    initial_equity: float,
-    nominal_units: int,
-) -> Dict[str, Any]:
-    """
-    Participation / capacity metrics computed from realized trades.
-
-    We use open_date for participation (what triggers per day).
-    We also compute daily sums of margin_req and abs(premium) as a unit-capacity proxy.
-    """
-    if trades is None or trades.empty:
-        return {
-            "nominal_units": int(nominal_units),
-            "avg_trades_day": np.nan,
-            "med_trades_day": np.nan,
-            "p95_trades_day": np.nan,
-            "max_trades_day": np.nan,
-            "avg_unique_uid_day": np.nan,
-            "med_unique_uid_day": np.nan,
-            "p95_unique_uid_day": np.nan,
-            "max_unique_uid_day": np.nan,
-            "p95_margin_day": np.nan,
-            "max_margin_day": np.nan,
-            "p95_abs_premium_day": np.nan,
-            "max_abs_premium_day": np.nan,
-            "total_pnl_per_nominal_unit": np.nan,
-            "total_pnlR_per_nominal_unit": np.nan,
-            "total_pnl_per_avg_active_uid": np.nan,
-            "total_pnlR_per_avg_active_uid": np.nan,
-        }
-
-    t = trades.copy()
-    t["open_date"] = t["open_dt"].dt.normalize()
-
-    # trades per day
-    trades_day = t.groupby("open_date").size()
-
-    # unique strategy_uids per day
-    uid_day = t.groupby("open_date")["strategy_uid"].nunique()
-
-    # daily capacity proxies (require margin_req + premium columns present)
-    margin_day = t.groupby("open_date")["margin_req"].sum() if "margin_req" in t.columns else pd.Series(dtype=float)
-    abs_prem_day = t.groupby("open_date")["premium"].apply(lambda s: s.abs().sum()) if "premium" in t.columns else pd.Series(dtype=float)
-
-    # totals
-    total_pnl = float(t[PNL_COL].sum())
-    total_pnlR = float(t[PNLR_COL].sum())
-
-    # normalizations
-    nominal_units = max(int(nominal_units), 1)
-    avg_active_uid = float(uid_day.mean()) if len(uid_day) else np.nan
-    if avg_active_uid and avg_active_uid > 0:
-        pnl_per_avg_uid = total_pnl / avg_active_uid
-        pnlR_per_avg_uid = total_pnlR / avg_active_uid
-    else:
-        pnl_per_avg_uid = np.nan
-        pnlR_per_avg_uid = np.nan
-
-    return {
-        "nominal_units": int(nominal_units),
-
-        "avg_trades_day": float(trades_day.mean()) if len(trades_day) else np.nan,
-        "med_trades_day": float(trades_day.median()) if len(trades_day) else np.nan,
-        "p95_trades_day": _q(trades_day, 0.95) if len(trades_day) else np.nan,
-        "max_trades_day": float(trades_day.max()) if len(trades_day) else np.nan,
-
-        "avg_unique_uid_day": float(uid_day.mean()) if len(uid_day) else np.nan,
-        "med_unique_uid_day": float(uid_day.median()) if len(uid_day) else np.nan,
-        "p95_unique_uid_day": _q(uid_day, 0.95) if len(uid_day) else np.nan,
-        "max_unique_uid_day": float(uid_day.max()) if len(uid_day) else np.nan,
-
-        "p95_margin_day": _q(margin_day, 0.95) if len(margin_day) else np.nan,
-        "max_margin_day": float(margin_day.max()) if len(margin_day) else np.nan,
-
-        "p95_abs_premium_day": _q(abs_prem_day, 0.95) if len(abs_prem_day) else np.nan,
-        "max_abs_premium_day": float(abs_prem_day.max()) if len(abs_prem_day) else np.nan,
-
-        "total_pnl_per_nominal_unit": total_pnl / nominal_units,
-        "total_pnlR_per_nominal_unit": total_pnlR / nominal_units,
-
-        "total_pnl_per_avg_active_uid": pnl_per_avg_uid,
-        "total_pnlR_per_avg_active_uid": pnlR_per_avg_uid,
-    }
-
-
-
 # -------------------------
 # Weekly CPO prediction panel builder
 # -------------------------
@@ -462,36 +300,6 @@ def _estimate_market_features_from_is(
     is_end: pd.Timestamp,
     atr_lookback_days: int = 10,
 ) -> Dict[str, float]:
-    """
-    Estimate market-level features for the *next* week from the IS slice.
-
-    Rules (as agreed):
-
-    - opening_price:
-        • Use the last `atr_lookback_days` trading days in IS (by open_date).
-        • Take ALL opening_price values over that window.
-        • mean  = average of those prices
-        • std   = std of those prices  (proxy for ATR in price terms).
-
-    - opening_vix:
-        • Take the last calendar month inside IS (from first-of-month up to `is_end`).
-        • Compute mean VIX over that window.
-        • Set sigma as:
-              mean >= 25        →  8% of mean
-              17 <= mean < 25   →  6% of mean
-              0 < mean < 17     →  9% of mean
-
-    - gap:
-        • Use *all* IS rows to compute mean and std of gap.
-        • Later we will draw from N(mean, std) per OoS day.
-
-    Returns:
-        {
-            "price_mean", "price_std",
-            "vix_mean", "vix_std",
-            "gap_mean", "gap_std",
-        }
-    """
     if df_is.empty:
         return {
             "price_mean": np.nan,
@@ -505,7 +313,6 @@ def _estimate_market_features_from_is(
     tmp = df_is.copy()
     tmp["open_date"] = tmp["open_dt"].dt.normalize()
 
-    # --- opening_price: use last N trading days in IS
     dates_all = (
         tmp["open_date"]
         .dropna()
@@ -514,11 +321,7 @@ def _estimate_market_features_from_is(
         .tolist()
     )
     if dates_all:
-        if len(dates_all) > atr_lookback_days:
-            last_dates = dates_all[-atr_lookback_days:]
-        else:
-            last_dates = dates_all
-
+        last_dates = dates_all[-atr_lookback_days:] if len(dates_all) > atr_lookback_days else dates_all
         sl_price = tmp[tmp["open_date"].isin(last_dates)]
         price_series = sl_price["opening_price"].dropna() if "opening_price" in sl_price.columns else pd.Series([], dtype=float)
         if not price_series.empty:
@@ -531,7 +334,6 @@ def _estimate_market_features_from_is(
         price_mean = np.nan
         price_std = 0.0
 
-    # --- opening_vix: last calendar month within IS
     is_end_date = pd.to_datetime(is_end).normalize()
     try:
         last_month_start = is_end_date.replace(day=1)
@@ -542,7 +344,6 @@ def _estimate_market_features_from_is(
     vix_series = tmp.loc[mask_vix, "opening_vix"].dropna() if "opening_vix" in tmp.columns else pd.Series([], dtype=float)
 
     if vix_series.empty and "opening_vix" in tmp.columns:
-        # fallback: all IS VIX values
         vix_series = tmp["opening_vix"].dropna()
 
     if not vix_series.empty:
@@ -560,7 +361,6 @@ def _estimate_market_features_from_is(
         vix_mean = np.nan
         vix_std = 0.0
 
-    # --- gap: full IS distribution
     if "gap" in tmp.columns:
         gap_series = tmp["gap"].dropna()
     else:
@@ -583,23 +383,13 @@ def _estimate_market_features_from_is(
     }
 
 
-
-
 def _strategy_typicals_from_is(df_is: pd.DataFrame) -> pd.DataFrame:
-    """
-    Strategy-specific typical features taken from IS.
-
-    Rules:
-    - open_minute: FIRST entry time in IS (min over open_minute).
-    - premium, margin_req: median over IS (per strategy).
-    """
     g = df_is.groupby("strategy_uid", as_index=False).agg(
         open_minute=("open_minute", "min"),
         premium=("premium", "median"),
         margin_req=("margin_req", "median"),
     )
     return g
-
 
 
 def _build_oos_prediction_panel(
@@ -609,33 +399,16 @@ def _build_oos_prediction_panel(
     strategy_uids: List[str],
     is_end: pd.Timestamp,
 ) -> pd.DataFrame:
-    """
-    Create synthetic OoS prediction rows for (day, strategy) using weekly CPO logic.
-
-    Features:
-      - dow: from OoS day
-      - open_minute, premium, margin_req: per-strategy typics from IS
-      - opening_price: random draw from N(price_mean, price_std) where
-            price_mean/std are computed from last N trading days in IS
-      - opening_vix: random draw from N(vix_mean, vix_std) where
-            vix_mean = mean VIX over the last calendar month in IS
-            vix_std  = mean * {8%, 6%, 9%} depending on the band
-      - gap: random draw from N(gap_mean, gap_std) computed over full IS
-    """
-    # Market-level estimates from IS
     market = _estimate_market_features_from_is(df_is, is_end=is_end)
 
     typ = _strategy_typicals_from_is(df_is)
-    # Make sure all strategies in this OoS week appear (even if some had no IS rows)
     typ = typ.set_index("strategy_uid").reindex(strategy_uids).reset_index()
 
     rows = []
-    # Keep dates ordered for determinism
     for d in sorted(oos_days):
         d_norm = d.normalize()
         dow = int(d.dayofweek)
 
-        # --- opening_price: daily draw
         price_mean = market.get("price_mean", np.nan)
         price_std = market.get("price_std", 0.0)
         if pd.notna(price_mean) and price_std > 0:
@@ -643,7 +416,6 @@ def _build_oos_prediction_panel(
         else:
             day_price = float(price_mean) if pd.notna(price_mean) else np.nan
 
-        # --- opening_vix: daily draw
         vix_mean = market.get("vix_mean", np.nan)
         vix_std = market.get("vix_std", 0.0)
         if pd.notna(vix_mean) and vix_std > 0:
@@ -651,7 +423,6 @@ def _build_oos_prediction_panel(
         else:
             day_vix = float(vix_mean) if pd.notna(vix_mean) else np.nan
 
-        # --- gap: daily draw from IS distribution
         gap_mean = market.get("gap_mean", 0.0)
         gap_std = market.get("gap_std", 0.0)
         if gap_std > 0:
@@ -676,7 +447,6 @@ def _build_oos_prediction_panel(
 
     panel = pd.DataFrame(rows)
 
-    # Ensure all feature cols exist in the right shape
     for c in FEATURE_COLS:
         if c not in panel.columns:
             panel[c] = np.nan
@@ -684,8 +454,6 @@ def _build_oos_prediction_panel(
     return panel
 
 
-
-#---------------DIAGNOSTIC PRINTOUTS CYCLES HELPERS
 def _print_df(title: str, df: pd.DataFrame, max_rows: int = 40) -> None:
     print("\n" + "=" * 110)
     print(title)
@@ -697,7 +465,6 @@ def _print_df(title: str, df: pd.DataFrame, max_rows: int = 40) -> None:
         print("<EMPTY>")
         return
 
-    # Avoid pandas truncation surprises in console
     with pd.option_context(
         "display.max_rows", max_rows,
         "display.max_columns", 200,
@@ -719,27 +486,21 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
 
     if params.lgbm_params is None:
         params.lgbm_params = dict(
-            n_estimators=285,
-            learning_rate=0.15,
-            num_leaves=30,
-            min_child_samples=40,
-            max_depth=-7,
-            subsample=0.48,
-            colsample_bytree=0.94,
-            reg_alpha=6.0,
-            reg_lambda=5.5,
-            min_gain_to_split=0.6,
+            n_estimators=280,
+            learning_rate=0.13,
+            num_leaves=18,
+            min_child_samples=50,
+            max_depth=-9,
+            subsample=0.2,
+            colsample_bytree=0.44,
+            reg_alpha=6.5,
+            reg_lambda=5.0,
+            min_gain_to_split=0.35,
             random_state=RANDOM_SEED,
             n_jobs=-1,
             verbosity=-1,
-            # ADD THESE 5 LINES (same as Optuna):
-            bagging_seed=RANDOM_SEED,
-            feature_fraction_seed=RANDOM_SEED,
-            data_random_seed=RANDOM_SEED,
-            force_col_wise=True,
-            deterministic=True,
         )
-    
+
     df = pd.read_csv(params.dataset_csv_path)
     df["open_dt"] = pd.to_datetime(df["open_dt"], errors="coerce")
     df["close_dt"] = pd.to_datetime(df["close_dt"], errors="coerce")
@@ -749,25 +510,16 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
     if missing:
         raise ValueError(f"Dataset missing required columns: {missing}")
 
-    # enforce structural fields only (no feature dropping)
     df = df.dropna(subset=["open_dt", "close_dt", TARGET_COL, PNLR_COL, PNL_COL]).copy()
     df = df.sort_values("open_dt").reset_index(drop=True)
 
     data_start = df["open_dt"].min().normalize()
     data_end = df["open_dt"].max().normalize()
 
-    # Build trading week table from open dates (decision calendar)
     open_dates = df["open_dt"].dt.normalize().dropna().drop_duplicates().sort_values()
     weeks_df = _make_week_table(open_dates)
 
     cycles_df = _compute_cycles_weekly(params, data_start, data_end, weeks_df)
-
-    #------------------------ IS/OoS CYCLES PRINTING --------------------------------------------
-    # print("\nCYCLES (weekly cadence; W-FRI blocks on OPEN dates):")
-    # if cycles_df.empty:
-    #     print("No cycles could be created with the current parameters/date range.")
-    # else:
-    #     print(cycles_df.to_string(index=False))
 
     print("\nRUN PARAMS (WEEKLY CPO):")
     print(f" dataset: {params.dataset_csv_path}")
@@ -798,38 +550,30 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
         is_from, is_to = cy["IS_from"], cy["IS_to"]
         oos_from, oos_to = cy["OoS_from"], cy["OoS_to"]
 
-        # IS: outcomes known by close_dt
         df_is = df[(df["close_dt"].dt.normalize() >= is_from) & (df["close_dt"].dt.normalize() <= is_to)].copy()
-
-        # OoS actual candidates: decisions by open_dt
         df_oos_actual = df[(df["open_dt"].dt.normalize() >= oos_from) & (df["open_dt"].dt.normalize() <= oos_to)].copy()
-        
-        # -------------------------
-        # DEBUG: print IS slice and OoS actual candidates (for ONE selected cycle)
-        # -------------------------
+
         if params.debug_cycle_to_print is not None and c == int(params.debug_cycle_to_print):
             cols_is = ["strategy_uid", "open_dt", "close_dt"] + FEATURE_COLS + [TARGET_COL, PNL_COL, PNLR_COL]
             cols_is = [x for x in cols_is if x in df_is.columns]
-        
+
             cols_oos = ["strategy_uid", "open_dt", "close_dt", PNL_COL, PNLR_COL, PREMIUM_COL]
             cols_oos = [x for x in cols_oos if x in df_oos_actual.columns]
-        
+
             _print_df(
                 f"DEBUG Cycle {c} | IS TRAIN SLICE (filtered by close_dt) | "
                 f"{is_from.date()} → {is_to.date()} | rows={len(df_is)} | cols={cols_is}",
                 df_is[cols_is].sort_values(["close_dt", "open_dt", "strategy_uid"]).tail(params.debug_max_rows),
                 max_rows=int(params.debug_max_rows),
             )
-        
+
             _print_df(
                 f"DEBUG Cycle {c} | OoS ACTUAL CANDIDATES (filtered by open_dt) | "
                 f"{oos_from.date()} → {oos_to.date()} | rows={len(df_oos_actual)}",
                 df_oos_actual[cols_oos].sort_values(["open_dt", "strategy_uid"]),
                 max_rows=int(params.debug_max_rows),
             )
-        #-----------------------------------------------------------------------
-        
-        
+
         if df_is.empty or df_oos_actual.empty:
             if params.verbose_cycles:
                 print(
@@ -841,20 +585,16 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
             )
             continue
 
-        # Baseline: store ALL OoS actual trades (minimal cols) for this cycle
         oos_all_rows.append(
-            df_oos_actual[["strategy_uid", "open_dt", "close_dt", PNL_COL, PNLR_COL, PREMIUM_COL, "margin_req"]].copy()
+            df_oos_actual[["strategy_uid", "open_dt", "close_dt", PNL_COL, PNLR_COL, PREMIUM_COL]].copy()
         )
 
-
-        # Train model on IS
         X_is = df_is[FEATURE_COLS]
         y_is = df_is[TARGET_COL].astype(int)
 
         model = LGBMClassifier(**params.lgbm_params)
         model.fit(X_is, y_is)
 
-        # Build synthetic OoS prediction panel (daily x strategy)
         oos_days = (
             df_oos_actual["open_dt"].dt.normalize()
             .drop_duplicates()
@@ -871,56 +611,44 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
             is_end=is_to,
         )
 
-        # Predict per (day, strategy)
         proba = model.predict_proba(pred_panel[FEATURE_COLS])[:, 1]
         pred_panel["p_pred"] = proba
-        
-        # -------------------------
-        # DEBUG: print the synthetic OoS prediction panel + per-day Top-K strategies
-        # -------------------------
+
         if params.debug_cycle_to_print is not None and c == int(params.debug_cycle_to_print):
             cols_pred = ["open_date", "strategy_uid"] + FEATURE_COLS + ["p_pred"]
             cols_pred = [x for x in cols_pred if x in pred_panel.columns]
-        
+
             _print_df(
                 f"DEBUG Cycle {c} | OoS PREDICTION PANEL fed to predict_proba() | "
                 f"days={len(oos_days)} | strategies={len(strategy_uids)} | rows={len(pred_panel)}",
                 pred_panel[cols_pred].sort_values(["open_date", "p_pred"], ascending=[True, False]),
                 max_rows=int(params.debug_max_rows),
             )
-        # -------------------------
-        
-        
-        # Top-K strategies PER DAY (not trades)
+
         pred_panel["open_date"] = pred_panel["open_date"].dt.normalize()
         top_strats = (
             pred_panel.sort_values(
                 ["open_date", "p_pred", "strategy_uid"],
                 ascending=[True, False, True],
-                kind="mergesort",  # stable sort
+                kind="mergesort",
             )
             .groupby("open_date", as_index=False)
             .head(int(params.top_k_per_day))
         )
 
-        
-        #---------DIAGNOSTIC------------
         if params.debug_cycle_to_print is not None and c == int(params.debug_cycle_to_print):
             _print_df(
                 f"DEBUG Cycle {c} | Top-{params.top_k_per_day} STRATEGIES PER DAY (from synthetic panel)",
                 top_strats[["open_date", "strategy_uid", "p_pred"]].sort_values(["open_date", "p_pred"], ascending=[True, False]),
                 max_rows=int(params.debug_max_rows),
             )
-        #----------------------
 
-        # Select ALL actual trades for those strategies on those days
         df_oos_actual["open_date"] = df_oos_actual["open_dt"].dt.normalize()
         key = top_strats[["open_date", "strategy_uid"]].copy()
         key["sel_flag"] = 1
 
         selected = df_oos_actual.merge(key, on=["open_date", "strategy_uid"], how="inner")
-        # keep only the core cols for global stitching
-        selected_core = selected[["strategy_uid", "open_dt", "close_dt", PNL_COL, PNLR_COL, PREMIUM_COL, "margin_req"]].copy()
+        selected_core = selected[["strategy_uid", "open_dt", "close_dt", PNL_COL, PNLR_COL, PREMIUM_COL]].copy()
 
         oos_selected_rows.append(selected_core)
 
@@ -953,7 +681,6 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
             )
         )
 
-    # Stitch baseline + selected (no dedupe; multi-entry is normal)
     base_all = pd.concat(oos_all_rows, ignore_index=True) if oos_all_rows else pd.DataFrame()
     sel_all = pd.concat(oos_selected_rows, ignore_index=True) if oos_selected_rows else pd.DataFrame()
 
@@ -964,28 +691,6 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
 
     baseline_metrics = _compute_metrics(base_all, initial_equity=float(params.initial_equity))
     ml_metrics = _compute_metrics(sel_all, initial_equity=float(params.initial_equity))
-    
-    baseline_curve = _build_equity_dd_series(base_all, float(params.initial_equity))
-    ml_curve = _build_equity_dd_series(sel_all, float(params.initial_equity))
-
-    
-    # Nominal breadth:
-    # - Baseline nominal = total unique strategies available in the (bounded) dataset used by this run
-    # - ML nominal = Top-K per day
-    baseline_nominal = int(df["strategy_uid"].nunique())
-    ml_nominal = int(params.top_k_per_day)
-    
-    baseline_extra = _compute_participation_metrics(
-        trades=base_all,
-        initial_equity=float(params.initial_equity),
-        nominal_units=baseline_nominal,
-    )
-    ml_extra = _compute_participation_metrics(
-        trades=sel_all,
-        initial_equity=float(params.initial_equity),
-        nominal_units=ml_nominal,
-    )
-
 
     print("\nFINAL (stitched by close_dt):")
     print(f" BASELINE trades total: {baseline_metrics['trades']}")
@@ -1004,31 +709,246 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
         "selected_trades": sel_all,
         "baseline_metrics": baseline_metrics,
         "ml_metrics": ml_metrics,
-        "baseline_extra_metrics": baseline_extra,
-        "ml_extra_metrics": ml_extra,
-        "baseline_curve": baseline_curve,
-        "ml_curve": ml_curve,
     }
 
 
-# -------------------------
-# Spyder harness
-# -------------------------
-if __name__ == "__main__":
-    DATASET = r"C:\Users\mauro\MAURO\Spyder\Portfolio26\ml\datasets\panel__SNAP_YYYYMMDD_HHMMSS__N9.csv"
+# =====================================================================================
+# OPTUNA HARNESS (standalone, no APP imports)
+# =====================================================================================
+import os
+import time
+import json
+import io
+import contextlib
+from datetime import datetime
 
-    p = RunParamsWeekly(
-        dataset_csv_path=DATASET,
-        start_date=None,
-        end_date=None,
-        is_months=2,
-        oos_weeks=1,
-        step_weeks=1,
-        anchored_type="U",
-        top_k_per_day=3,
-        verbose_cycles=True,
+import optuna
+
+
+# -------------------------
+# USER HARD-CODED SETTINGS
+# -------------------------
+DATASET_CSV = r"C:\Users\mauro\MAURO\Spyder\Portfolio26\ml\datasets\panel__SNAP_20251221_215408__N11.csv"
+
+# Run config for weekly CPO (same knobs as app; hard-coded here)
+RUN_PARAMS = dict(
+    dataset_csv_path=DATASET_CSV,
+    start_date=None,
+    end_date=None,
+    is_months=2,
+    oos_weeks=1,
+    step_weeks=1,
+    anchored_type="U",
+    top_k_per_day=6,
+    verbose_cycles=False,         # Optuna: keep silent (we suppress output anyway)
+    debug_cycle_to_print=None,    # Optuna: no debug tables
+    debug_max_rows=40,
+    initial_equity=100000.0,
+)
+
+N_TRIALS = 400
+
+# Optional: persistent DB
+STORAGE = None  # e.g. "sqlite:///ml2_weekly_pcr_optuna.db"
+STUDY_NAME = "ml2_weekly_pcr"
+
+# -------------------------
+# Hyperparameter ranges WITH STEP (edit as you like)
+# -------------------------
+HP_SPEC = {
+    "n_estimators":        {"low": 45,  "high": 370,  "step": 5},     # int grid
+    "learning_rate":       {"low": 0.01, "high": 0.15, "step": 0.01},    # log-scale (no step)
+    "num_leaves":          {"low": 10,    "high": 45,   "step": 1},               # categorical grid
+    "min_child_samples":   {"low": 5,    "high": 70,   "step": 5},      # int grid
+    "max_depth":           {"choices": [-1, 3, 5, 7, 9, 12, 15]},           # categorical grid
+    "subsample":           {"low": 0.10, "high": 1.00, "step": 0.02},
+    "colsample_bytree":    {"low": 0.40, "high": 1.00, "step": 0.02},
+    "reg_alpha":           {"low": 0.0, "high": 10.0, "step": 0.5},
+    "reg_lambda":          {"low": 0.0, "high": 10.0, "step": 0.5},
+    "min_gain_to_split":   {"low": 0.0, "high": 1.0, "step": 0.05},
+}
+
+# For strict penny-perfect reproducibility validation only:
+# set N_JOBS_FIXED = 1. After validated, you can revert to -1 for speed.
+N_JOBS_FIXED = -1  # 1 for strict determinism, -1 for speed
+
+
+def _suggest(trial: optuna.Trial, name: str):
+    spec = HP_SPEC[name]
+    if "choices" in spec:
+        return trial.suggest_categorical(name, spec["choices"])
+
+    low = spec["low"]
+    high = spec["high"]
+    step = spec.get("step", None)
+
+    if isinstance(low, int) and isinstance(high, int):
+        return trial.suggest_int(name, int(low), int(high), step=int(step) if step is not None else 1)
+
+    return trial.suggest_float(name, float(low), float(high), step=float(step) if step is not None else None)
+
+
+def _build_lgbm_params(trial: optuna.Trial, seed: int) -> Dict[str, Any]:
+    """
+    IMPORTANT: This does NOT change your engine behavior.
+    It only constructs params.lgbm_params exactly like you already pass in the app,
+    with the trial values + the SAME seed applied to RNG controls.
+    """
+    p = dict(
+        n_estimators=_suggest(trial, "n_estimators"),
+        learning_rate=_suggest(trial, "learning_rate"),
+        num_leaves=_suggest(trial, "num_leaves"),
+        min_child_samples=_suggest(trial, "min_child_samples"),
+        max_depth=_suggest(trial, "max_depth"),
+        subsample=_suggest(trial, "subsample"),
+        colsample_bytree=_suggest(trial, "colsample_bytree"),
+        reg_alpha=_suggest(trial, "reg_alpha"),
+        reg_lambda=_suggest(trial, "reg_lambda"),
+        min_gain_to_split=_suggest(trial, "min_gain_to_split"),
+
+        random_state=int(seed),
+        n_jobs=int(N_JOBS_FIXED),
+        verbosity=-1,
     )
 
-    out = run_fwa_weekly(p)
-    print("\nCycle summary head:")
-    print(out["cycle_summaries"].head(12).to_string(index=False))
+    # Make model RNG fully trackable by the SAME seed (keeps reproducibility clean)
+    # These are LightGBM parameters and do not change your engine logic; they only eliminate drift.
+    p["bagging_seed"] = int(seed)
+    p["feature_fraction_seed"] = int(seed)
+    p["data_random_seed"] = int(seed)
+
+    # Reduce internal overhead + log spam
+    p["force_col_wise"] = True
+
+    # Optional strictness (if your LightGBM build supports it)
+    p["deterministic"] = True
+
+    return p
+
+
+@contextlib.contextmanager
+def suppress_output(enabled: bool = True):
+    """
+    Silences everything printed by run_fwa_weekly() (cycles/final tables/LightGBM).
+    Keeps console to exactly one line per Optuna trial.
+    """
+    if not enabled:
+        yield
+        return
+    devnull_out = io.StringIO()
+    devnull_err = io.StringIO()
+    with contextlib.redirect_stdout(devnull_out), contextlib.redirect_stderr(devnull_err):
+        yield
+
+
+def _safe_float(x) -> float:
+    try:
+        return float(x)
+    except Exception:
+        return float("nan")
+
+
+def _append_csv_row(row: Dict[str, Any], csv_path: str) -> None:
+    df_row = pd.DataFrame([row])
+    if not os.path.exists(csv_path):
+        df_row.to_csv(csv_path, index=False)
+    else:
+        df_row.to_csv(csv_path, mode="a", header=False, index=False)
+
+
+RUN_TAG = datetime.now().strftime("%Y%m%d_%H%M%S")
+OUT_DIR = r"C:\Users\mauro\MAURO\Options Trading\TradeBusters\Portfolio26\Phase3"
+CSV_LOG_PATH = os.path.join(OUT_DIR, f"optuna_ml2_weekly_pcr__{RUN_TAG}.csv")
+
+
+def objective(trial: optuna.Trial) -> float:
+    global RANDOM_SEED
+
+    # One global seed per trial (drives feature generation + model RNG)
+    seed = trial.suggest_int("seed", 1, 2_000_000_000)
+    RANDOM_SEED = int(seed)
+
+    # Build params
+    p = RunParamsWeekly(**RUN_PARAMS)
+    p.lgbm_params = _build_lgbm_params(trial, seed=seed)
+
+    # Run engine silently
+    t0 = time.time()
+    with suppress_output(enabled=True):
+        out = run_fwa_weekly(p)
+    elapsed = time.time() - t0
+
+    ml = out.get("ml_metrics", {}) or {}
+
+    score = _safe_float(ml.get("pcr", np.nan))
+    if not np.isfinite(score):
+        score = -1e9
+
+    # Log row
+    row: Dict[str, Any] = {
+        "trial": int(trial.number),
+        "seed": int(seed),
+        "elapsed_sec": float(elapsed),
+    }
+
+    # Hyperparams
+    for k, v in trial.params.items():
+        row[k] = v
+
+    # Final stitched ML metrics (same as app)
+    row["ml_trades"] = int(ml.get("trades", 0) or 0)
+    row["ml_total_pnl"] = _safe_float(ml.get("total_pnl", np.nan))
+    row["ml_total_pnlR"] = _safe_float(ml.get("total_pnlR", np.nan))
+    row["ml_return_pct"] = _safe_float(ml.get("return_pct", np.nan))
+    row["ml_pcr"] = _safe_float(ml.get("pcr", np.nan))
+    row["ml_max_dd_$"] = _safe_float(ml.get("max_dd_$", np.nan))
+    row["ml_max_dd_%"] = _safe_float(ml.get("max_dd_%", np.nan))
+    row["ml_sharpe_daily"] = _safe_float(ml.get("sharpe_daily", np.nan))
+    row["ml_win_month_pct"] = _safe_float(ml.get("win_month_pct", np.nan))
+
+    _append_csv_row(row, CSV_LOG_PATH)
+
+    # One-line console output per trial
+    print(
+        f"[trial={trial.number:04d}] PCR={score:.9f} "
+        f"pnl={row['ml_total_pnl']:.2f} dd$={row['ml_max_dd_$']:.2f} "
+        f"sh={row['ml_sharpe_daily']:.3f} trades={row['ml_trades']} seed={seed} "
+        f"t={elapsed:.2f}s"
+    )
+
+    return score
+
+
+def main():
+    print("=== ML2 Weekly CPO Optuna (standalone; engine inline) ===")
+    print(f"Dataset: {DATASET_CSV}")
+    print(f"Trials: {N_TRIALS}")
+    print(f"CSV log: {CSV_LOG_PATH}")
+    print("")
+
+    if STORAGE:
+        study = optuna.create_study(
+            direction="maximize",
+            study_name=STUDY_NAME,
+            storage=STORAGE,
+            load_if_exists=True,
+        )
+    else:
+        study = optuna.create_study(
+            direction="maximize",
+            study_name=STUDY_NAME,
+        )
+
+    study.optimize(objective, n_trials=int(N_TRIALS), gc_after_trial=True)
+
+    bt = study.best_trial
+    print("\n=== BEST TRIAL ===")
+    print(f"Best value (PCR): {bt.value}")
+    print("Best params:")
+    for k, v in bt.params.items():
+        print(f"  {k}: {v}")
+    print(f"\nCSV log written: {CSV_LOG_PATH}")
+
+
+if __name__ == "__main__":
+    main()

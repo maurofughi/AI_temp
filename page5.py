@@ -17,6 +17,8 @@ import dash_bootstrap_components as dbc
 from dash import html, dcc, callback, ctx
 from dash.dependencies import Input, Output, State
 from dash import dash_table
+import plotly.graph_objects as go
+
 
 from ml.ml1 import RunParams, run_fwa_single
 from ml.ml2 import RunParamsWeekly, run_fwa_weekly
@@ -78,6 +80,7 @@ def build_ml_cpo_right_panel():
     return dbc.Container(
         [
             html.H3("ML CPO", className="mb-2"),
+            dcc.Store(id="mlcpo-curves-store", data=None),
             dbc.Row(
                 [
                     # Left/top: parameters (tight)
@@ -389,6 +392,16 @@ def build_ml_cpo_right_panel():
                                             ],
                                             className="g-2 mt-1",
                                         ),
+                                        #here
+                                        dbc.Button(
+                                            "Charts",
+                                            id="mlcpo-open-charts-btn",
+                                            color="secondary",
+                                            outline=True,
+                                            size="sm",
+                                            style={"marginTop": "1.75rem", "width": "100%"},
+                                        ),                                        
+                                       
                                     ]
                                 ),
                             ],
@@ -465,6 +478,36 @@ def build_ml_cpo_right_panel():
                 ],
                 className="mb-3",
             ),
+            # Extra metrics (participation / normalization)
+            dbc.Card(
+                [
+                    dbc.CardHeader("Baseline vs ML Extra Metrics (Participation / Normalization)"),
+                    dbc.CardBody(
+                        [
+                            dash_table.DataTable(
+                                id="mlcpo-metrics2-table",
+                                columns=[],
+                                data=[],
+                                style_table={"overflowX": "auto"},
+                                style_cell={
+                                    "fontSize": "0.85rem",
+                                    "padding": "6px",
+                                    "whiteSpace": "nowrap",
+                                    "backgroundColor": "rgba(0,0,0,0)",
+                                    "color": "white",
+                                },
+                                style_header={
+                                    "fontWeight": "bold",
+                                    "backgroundColor": "rgba(255,255,255,0.08)",
+                                    "color": "white",
+                                },
+                            ),
+                        ]
+                    ),
+                ],
+                className="mb-3",
+            ),
+
 
 
             # Lower: cycle summaries table
@@ -494,6 +537,36 @@ def build_ml_cpo_right_panel():
                             ),
                         ]
                     ),
+                    dbc.Modal(
+                        [
+                            dbc.ModalHeader(
+                                [
+                                    dbc.ModalTitle("ML CPO — Equity & Drawdown (Baseline vs ML)"),
+                                    dbc.Button(
+                                        "Close",
+                                        id="mlcpo-close-charts-btn",
+                                        color="secondary",
+                                        outline=True,
+                                        size="sm",
+                                        className="ms-2",
+                                    ),
+                                ],
+                                className="d-flex justify-content-between align-items-center",
+                            ),
+                            dbc.ModalBody(
+                                [
+                                    dcc.Graph(id="mlcpo-equity-graph", figure={}, config={"displayModeBar": True}),
+                                    dcc.Graph(id="mlcpo-dd-graph", figure={}, config={"displayModeBar": True}),
+                                ]
+                            ),
+                        ],
+                        id="mlcpo-charts-modal",
+                        is_open=False,
+                        size="xl",
+                        fullscreen=True,
+                        scrollable=True,
+                    )
+
                 ]
             ),
             dcc.Store(id="mlcpo-mode", data="monthly"),
@@ -566,8 +639,11 @@ def mlcpo_set_mode(n_monthly, n_weekly, current_mode):
     Output("mlcpo-summary-text", "children"),
     Output("mlcpo-metrics-table", "columns"),
     Output("mlcpo-metrics-table", "data"),
+    Output("mlcpo-metrics2-table", "columns"),
+    Output("mlcpo-metrics2-table", "data"),
     Output("mlcpo-cycle-table", "columns"),
     Output("mlcpo-cycle-table", "data"),
+    Output("mlcpo-curves-store", "data"),
     Output("mlcpo-last-run-meta", "data"),
     Input("mlcpo-run-btn", "n_clicks"),
     State("mlcpo-dataset-dropdown", "value"),
@@ -612,6 +688,8 @@ def mlcpo_run_fwa(
             [],
             [],
             [],
+            [],
+            [],
             None,
         )
 
@@ -626,6 +704,8 @@ def mlcpo_run_fwa(
             "ERROR: Unsupported selection mode.",
             "danger",
             "",
+            [],
+            [],
             [],
             [],
             [],
@@ -650,6 +730,29 @@ def mlcpo_run_fwa(
                 verbose_cycles=False,  # UI should not spam console
             )
             out = run_fwa_weekly(params2)
+            
+            bcurve = out.get("baseline_curve")
+            mcurve = out.get("ml_curve")
+            
+            curves_payload = None
+            try:
+                if bcurve is not None and not bcurve.empty and mcurve is not None and not mcurve.empty:
+                    curves_payload = {
+                        "baseline": {
+                            "date": bcurve["date"].astype(str).tolist(),
+                            "equity": bcurve["equity"].astype(float).tolist(),
+                            "dd": bcurve["dd"].astype(float).tolist(),
+                            "dd_pct": bcurve["dd_pct"].astype(float).tolist(),
+                        },
+                        "ml": {
+                            "date": mcurve["date"].astype(str).tolist(),
+                            "equity": mcurve["equity"].astype(float).tolist(),
+                            "dd": mcurve["dd"].astype(float).tolist(),
+                            "dd_pct": mcurve["dd_pct"].astype(float).tolist(),
+                        },
+                    }
+            except Exception:
+                curves_payload = None
 
         else:
             # Monthly Static (ml1): IS/OoS/Step in months
@@ -665,7 +768,6 @@ def mlcpo_run_fwa(
                 verbose_cycles=False,  # UI should not spam console
             )
             out = run_fwa_single(params1)
-
 
         bm = out.get("baseline_metrics", {}) or {}
         mm = out.get("ml_metrics", {}) or {}
@@ -725,6 +827,61 @@ def mlcpo_run_fwa(
         ]
 
         metrics_cols = [{"name": k, "id": k} for k in metrics_rows[0].keys()]
+        
+        bx = out.get("baseline_extra_metrics", {}) or {}
+        mx = out.get("ml_extra_metrics", {}) or {}
+        
+        def _fmt_int(x):
+            try:
+                return str(int(x))
+            except Exception:
+                return ""
+        
+        extra_rows = [
+            {
+                "set": "BASELINE",
+                "nominal_units": _fmt_int(bx.get("nominal_units")),
+                "avg_trades_day": _fmt_num(bx.get("avg_trades_day")),
+                "med_trades_day": _fmt_num(bx.get("med_trades_day")),
+                "p95_trades_day": _fmt_num(bx.get("p95_trades_day")),
+                "max_trades_day": _fmt_num(bx.get("max_trades_day")),
+                "avg_unique_uid_day": _fmt_num(bx.get("avg_unique_uid_day")),
+                "med_unique_uid_day": _fmt_num(bx.get("med_unique_uid_day")),
+                "p95_unique_uid_day": _fmt_num(bx.get("p95_unique_uid_day")),
+                "max_unique_uid_day": _fmt_num(bx.get("max_unique_uid_day")),
+                "p95_margin_day": _fmt_money(bx.get("p95_margin_day")),
+                "max_margin_day": _fmt_money(bx.get("max_margin_day")),
+                "p95_abs_premium_day": _fmt_money(bx.get("p95_abs_premium_day")),
+                "max_abs_premium_day": _fmt_money(bx.get("max_abs_premium_day")),
+                "total_pnl_per_nominal_unit": _fmt_money(bx.get("total_pnl_per_nominal_unit")),
+                "total_pnlR_per_nominal_unit": _fmt_num(bx.get("total_pnlR_per_nominal_unit")),
+                "total_pnl_per_avg_active_uid": _fmt_money(bx.get("total_pnl_per_avg_active_uid")),
+                "total_pnlR_per_avg_active_uid": _fmt_num(bx.get("total_pnlR_per_avg_active_uid")),
+            },
+            {
+                "set": "ML",
+                "nominal_units": _fmt_int(mx.get("nominal_units")),
+                "avg_trades_day": _fmt_num(mx.get("avg_trades_day")),
+                "med_trades_day": _fmt_num(mx.get("med_trades_day")),
+                "p95_trades_day": _fmt_num(mx.get("p95_trades_day")),
+                "max_trades_day": _fmt_num(mx.get("max_trades_day")),
+                "avg_unique_uid_day": _fmt_num(mx.get("avg_unique_uid_day")),
+                "med_unique_uid_day": _fmt_num(mx.get("med_unique_uid_day")),
+                "p95_unique_uid_day": _fmt_num(mx.get("p95_unique_uid_day")),
+                "max_unique_uid_day": _fmt_num(mx.get("max_unique_uid_day")),
+                "p95_margin_day": _fmt_money(mx.get("p95_margin_day")),
+                "max_margin_day": _fmt_money(mx.get("max_margin_day")),
+                "p95_abs_premium_day": _fmt_money(mx.get("p95_abs_premium_day")),
+                "max_abs_premium_day": _fmt_money(mx.get("max_abs_premium_day")),
+                "total_pnl_per_nominal_unit": _fmt_money(mx.get("total_pnl_per_nominal_unit")),
+                "total_pnlR_per_nominal_unit": _fmt_num(mx.get("total_pnlR_per_nominal_unit")),
+                "total_pnl_per_avg_active_uid": _fmt_money(mx.get("total_pnl_per_avg_active_uid")),
+                "total_pnlR_per_avg_active_uid": _fmt_num(mx.get("total_pnlR_per_avg_active_uid")),
+            },
+        ]
+        
+        extra_cols = [{"name": k, "id": k} for k in extra_rows[0].keys()]
+
 
 
         n_cycles = len(out.get("cycles", []))
@@ -759,10 +916,14 @@ def mlcpo_run_fwa(
             summary,
             metrics_cols,
             metrics_rows,
+            extra_cols,
+            extra_rows,
             cols,
             data,
+            curves_payload,
             meta,
         )
+
 
 
     except Exception as e:
@@ -774,6 +935,66 @@ def mlcpo_run_fwa(
             [],
             [],
             [],
+            [],
+            [],
+            None,
             None,
         )
+
+def _make_equity_fig(curves_payload: dict):
+    fig = go.Figure()
+    b = curves_payload.get("baseline")
+    m = curves_payload.get("ml")
+    fig.add_trace(go.Scatter(x=b["date"], y=b["equity"], mode="lines", name="BASELINE"))
+    fig.add_trace(go.Scatter(x=m["date"], y=m["equity"], mode="lines", name="ML"))
+    fig.update_layout(
+        title="Equity Curve (Realized, by close date)",
+        margin=dict(l=40, r=20, t=50, b=40),
+        template="plotly_dark",
+        legend=dict(orientation="h"),
+    )
+    return fig
+
+
+def _make_dd_fig(curves_payload: dict):
+    fig = go.Figure()
+    b = curves_payload.get("baseline")
+    m = curves_payload.get("ml")
+    fig.add_trace(go.Scatter(x=b["date"], y=b["dd"], mode="lines", name="BASELINE"))
+    fig.add_trace(go.Scatter(x=m["date"], y=m["dd"], mode="lines", name="ML"))
+    fig.update_layout(
+        title="Drawdown ($) (Realized, by close date)",
+        margin=dict(l=40, r=20, t=50, b=40),
+        template="plotly_dark",
+        legend=dict(orientation="h"),
+    )
+    return fig
+
+
+@callback(
+    Output("mlcpo-charts-modal", "is_open"),
+    Output("mlcpo-equity-graph", "figure"),
+    Output("mlcpo-dd-graph", "figure"),
+    Input("mlcpo-open-charts-btn", "n_clicks"),
+    Input("mlcpo-close-charts-btn", "n_clicks"),
+    State("mlcpo-charts-modal", "is_open"),
+    State("mlcpo-curves-store", "data"),
+    prevent_initial_call=True,
+)
+def mlcpo_toggle_charts(open_n, close_n, is_open, curves_payload):
+    trig = ctx.triggered_id
+
+    if trig == "mlcpo-close-charts-btn":
+        return False, {}, {}
+
+    if trig == "mlcpo-open-charts-btn":
+        if not curves_payload or not curves_payload.get("baseline") or not curves_payload.get("ml"):
+            # Open modal anyway; show empty figs if no data
+            return True, {}, {}
+        eq = _make_equity_fig(curves_payload)
+        dd = _make_dd_fig(curves_payload)
+        return True, eq, dd
+
+    # Fallback: no change
+    return is_open, {}, {}
 

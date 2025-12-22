@@ -41,7 +41,7 @@ except Exception as e:
 # ---------------------------------------------------------------------
 # Global RNG seed for feature randomization (price, VIX, gap, etc.)
 # ---------------------------------------------------------------------
-RANDOM_SEED = 391176743  # change this if you want different random paths
+RANDOM_SEED = 113723324  # change this if you want different random paths
 
 
 # -------------------------
@@ -268,32 +268,71 @@ def _pcr_from_pnl_and_premium(pnl: pd.Series, premium: pd.Series) -> float:
     return total_pnl / total_abs_prem  # fraction
 
 
-def _build_equity_dd_series(trades: pd.DataFrame, initial_equity: float) -> pd.DataFrame:
+# def _build_equity_dd_series(trades: pd.DataFrame, initial_equity: float) -> pd.DataFrame:
+#     """
+#     Builds daily equity & drawdown series from realized P&L by close date.
+#     Returns a dataframe with:
+#       date, pnl, equity, dd, dd_pct
+#     """
+#     if trades is None or trades.empty:
+#         return pd.DataFrame(columns=["date", "pnl", "equity", "dd", "dd_pct"])
+
+#     t = trades.copy()
+#     t["close_date"] = t["close_dt"].dt.normalize()
+
+#     daily = (
+#         t.groupby("close_date", as_index=False)[PNL_COL]
+#          .sum()
+#          .rename(columns={"close_date": "date", PNL_COL: "pnl"})
+#          .sort_values("date")
+#          .reset_index(drop=True)
+#     )
+
+#     daily["equity"] = float(initial_equity) + daily["pnl"].cumsum()
+#     daily["peak"] = daily["equity"].cummax()
+#     daily["dd"] = daily["equity"] - daily["peak"]
+#     daily["dd_pct"] = np.where(daily["peak"] != 0, daily["dd"] / daily["peak"], np.nan)
+
+#     return daily[["date", "pnl", "equity", "dd", "dd_pct"]]
+
+def _build_daily_series_with_exposure(trades: pd.DataFrame, initial_equity: float) -> pd.DataFrame:
     """
-    Builds daily equity & drawdown series from realized P&L by close date.
-    Returns a dataframe with:
-      date, pnl, equity, dd, dd_pct
+    Build daily realized P&L plus exposure proxies by close date:
+      - pnl_day: sum pnl for trades closing that date
+      - uid_day: number of unique strategy_uid among trades closing that date
+      - margin_day: sum margin_req among trades closing that date
+    Also includes cumulative raw equity and raw dd (optional, but fine to keep).
     """
     if trades is None or trades.empty:
-        return pd.DataFrame(columns=["date", "pnl", "equity", "dd", "dd_pct"])
+        return pd.DataFrame(columns=["date", "pnl_day", "uid_day", "margin_day"])
 
     t = trades.copy()
-    t["close_date"] = t["close_dt"].dt.normalize()
+    t["date"] = t["close_dt"].dt.normalize()
 
-    daily = (
-        t.groupby("close_date", as_index=False)[PNL_COL]
-         .sum()
-         .rename(columns={"close_date": "date", PNL_COL: "pnl"})
-         .sort_values("date")
-         .reset_index(drop=True)
-    )
+    g = t.groupby("date")
 
-    daily["equity"] = float(initial_equity) + daily["pnl"].cumsum()
-    daily["peak"] = daily["equity"].cummax()
-    daily["dd"] = daily["equity"] - daily["peak"]
-    daily["dd_pct"] = np.where(daily["peak"] != 0, daily["dd"] / daily["peak"], np.nan)
+    daily = pd.DataFrame({
+        "date": g.size().index,
+        "pnl_day": g[PNL_COL].sum().values,
+        "uid_day": g["strategy_uid"].nunique().values,
+        "margin_day": g["margin_req"].sum().values if "margin_req" in t.columns else 0.0,
+        "premium_day": g["premium"].sum().values if "premium" in t.columns else 0.0,
+    })
 
-    return daily[["date", "pnl", "equity", "dd", "dd_pct"]]
+
+    # Safety: avoid zeros
+    daily["uid_day"] = daily["uid_day"].replace(0, np.nan)
+    daily["margin_day"] = daily["margin_day"].replace(0, np.nan)
+
+    # Keep raw cumulative equity for reference if you want
+    daily["equity_raw"] = float(initial_equity) + daily["pnl_day"].cumsum()
+    daily["peak_raw"] = daily["equity_raw"].cummax()
+    daily["dd_raw"] = daily["equity_raw"] - daily["peak_raw"]
+    daily["dd_raw_pct"] = np.where(daily["peak_raw"] != 0, daily["dd_raw"] / daily["peak_raw"], np.nan)
+    daily["premium_day"] = daily["premium_day"].replace(0, np.nan)
+
+
+    return daily
 
 
 def _compute_metrics(trades: pd.DataFrame, initial_equity: float) -> Dict[str, Any]:
@@ -719,16 +758,16 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
 
     if params.lgbm_params is None:
         params.lgbm_params = dict(
-            n_estimators=285,
-            learning_rate=0.15,
-            num_leaves=30,
-            min_child_samples=40,
-            max_depth=-7,
-            subsample=0.48,
-            colsample_bytree=0.94,
-            reg_alpha=6.0,
-            reg_lambda=5.5,
-            min_gain_to_split=0.6,
+            n_estimators=275,
+            learning_rate=0.14,
+            num_leaves=17,
+            min_child_samples=10,
+            max_depth=-1,
+            subsample=0.12,
+            colsample_bytree=0.62,
+            reg_alpha=10.0,
+            reg_lambda=9.5,
+            min_gain_to_split=0,
             random_state=RANDOM_SEED,
             n_jobs=-1,
             verbosity=-1,
@@ -807,26 +846,26 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
         # -------------------------
         # DEBUG: print IS slice and OoS actual candidates (for ONE selected cycle)
         # -------------------------
-        if params.debug_cycle_to_print is not None and c == int(params.debug_cycle_to_print):
-            cols_is = ["strategy_uid", "open_dt", "close_dt"] + FEATURE_COLS + [TARGET_COL, PNL_COL, PNLR_COL]
-            cols_is = [x for x in cols_is if x in df_is.columns]
+        # if params.debug_cycle_to_print is not None and c == int(params.debug_cycle_to_print):
+        #     cols_is = ["strategy_uid", "open_dt", "close_dt"] + FEATURE_COLS + [TARGET_COL, PNL_COL, PNLR_COL]
+        #     cols_is = [x for x in cols_is if x in df_is.columns]
         
-            cols_oos = ["strategy_uid", "open_dt", "close_dt", PNL_COL, PNLR_COL, PREMIUM_COL]
-            cols_oos = [x for x in cols_oos if x in df_oos_actual.columns]
+        #     cols_oos = ["strategy_uid", "open_dt", "close_dt", PNL_COL, PNLR_COL, PREMIUM_COL]
+        #     cols_oos = [x for x in cols_oos if x in df_oos_actual.columns]
         
-            _print_df(
-                f"DEBUG Cycle {c} | IS TRAIN SLICE (filtered by close_dt) | "
-                f"{is_from.date()} → {is_to.date()} | rows={len(df_is)} | cols={cols_is}",
-                df_is[cols_is].sort_values(["close_dt", "open_dt", "strategy_uid"]).tail(params.debug_max_rows),
-                max_rows=int(params.debug_max_rows),
-            )
+        #     _print_df(
+        #         f"DEBUG Cycle {c} | IS TRAIN SLICE (filtered by close_dt) | "
+        #         f"{is_from.date()} → {is_to.date()} | rows={len(df_is)} | cols={cols_is}",
+        #         df_is[cols_is].sort_values(["close_dt", "open_dt", "strategy_uid"]).tail(params.debug_max_rows),
+        #         max_rows=int(params.debug_max_rows),
+        #     )
         
-            _print_df(
-                f"DEBUG Cycle {c} | OoS ACTUAL CANDIDATES (filtered by open_dt) | "
-                f"{oos_from.date()} → {oos_to.date()} | rows={len(df_oos_actual)}",
-                df_oos_actual[cols_oos].sort_values(["open_dt", "strategy_uid"]),
-                max_rows=int(params.debug_max_rows),
-            )
+        #     _print_df(
+        #         f"DEBUG Cycle {c} | OoS ACTUAL CANDIDATES (filtered by open_dt) | "
+        #         f"{oos_from.date()} → {oos_to.date()} | rows={len(df_oos_actual)}",
+        #         df_oos_actual[cols_oos].sort_values(["open_dt", "strategy_uid"]),
+        #         max_rows=int(params.debug_max_rows),
+        #     )
         #-----------------------------------------------------------------------
         
         
@@ -878,19 +917,19 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
         # -------------------------
         # DEBUG: print the synthetic OoS prediction panel + per-day Top-K strategies
         # -------------------------
-        if params.debug_cycle_to_print is not None and c == int(params.debug_cycle_to_print):
-            cols_pred = ["open_date", "strategy_uid"] + FEATURE_COLS + ["p_pred"]
-            cols_pred = [x for x in cols_pred if x in pred_panel.columns]
+        # if params.debug_cycle_to_print is not None and c == int(params.debug_cycle_to_print):
+        #     cols_pred = ["open_date", "strategy_uid"] + FEATURE_COLS + ["p_pred"]
+        #     cols_pred = [x for x in cols_pred if x in pred_panel.columns]
         
-            _print_df(
-                f"DEBUG Cycle {c} | OoS PREDICTION PANEL fed to predict_proba() | "
-                f"days={len(oos_days)} | strategies={len(strategy_uids)} | rows={len(pred_panel)}",
-                pred_panel[cols_pred].sort_values(["open_date", "p_pred"], ascending=[True, False]),
-                max_rows=int(params.debug_max_rows),
-            )
+        #     _print_df(
+        #         f"DEBUG Cycle {c} | OoS PREDICTION PANEL fed to predict_proba() | "
+        #         f"days={len(oos_days)} | strategies={len(strategy_uids)} | rows={len(pred_panel)}",
+        #         pred_panel[cols_pred].sort_values(["open_date", "p_pred"], ascending=[True, False]),
+        #         max_rows=int(params.debug_max_rows),
+        #     )
         # -------------------------
         
-        
+        #========= SELECTION MODE ========================
         # Top-K strategies PER DAY (not trades)
         pred_panel["open_date"] = pred_panel["open_date"].dt.normalize()
         top_strats = (
@@ -965,9 +1004,8 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
     baseline_metrics = _compute_metrics(base_all, initial_equity=float(params.initial_equity))
     ml_metrics = _compute_metrics(sel_all, initial_equity=float(params.initial_equity))
     
-    baseline_curve = _build_equity_dd_series(base_all, float(params.initial_equity))
-    ml_curve = _build_equity_dd_series(sel_all, float(params.initial_equity))
-
+    baseline_curve = _build_daily_series_with_exposure(base_all, float(params.initial_equity))
+    ml_curve = _build_daily_series_with_exposure(sel_all, float(params.initial_equity))
     
     # Nominal breadth:
     # - Baseline nominal = total unique strategies available in the (bounded) dataset used by this run

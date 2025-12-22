@@ -472,6 +472,19 @@ def build_ml_cpo_right_panel():
                                     "backgroundColor": "rgba(255,255,255,0.08)",
                                     "color": "white",
                                 },
+                                css=[
+                                    # Row hover -> blue highlight instead of white
+                                    {
+                                        "selector": ".dash-spreadsheet-container .dash-spreadsheet-inner tr:hover td",
+                                        "rule": "background-color: rgba(0, 0, 255, 0.7) !important; color: white !important;",
+                                    },
+                                    # Also keep active/selected readable (click focus)
+                                    {
+                                        "selector": ".dash-spreadsheet-container .dash-spreadsheet-inner td.focused, "
+                                                    ".dash-spreadsheet-container .dash-spreadsheet-inner td.cell--selected",
+                                        "rule": "background-color: rgba(0, 123, 255, 0.40) !important; color: white !important;",
+                                    },
+                                ],
                             ),
                         ]
                     ),
@@ -501,6 +514,19 @@ def build_ml_cpo_right_panel():
                                     "backgroundColor": "rgba(255,255,255,0.08)",
                                     "color": "white",
                                 },
+                                css=[
+                                    # Row hover -> blue highlight instead of white
+                                    {
+                                        "selector": ".dash-spreadsheet-container .dash-spreadsheet-inner tr:hover td",
+                                        "rule": "background-color: rgba(0, 0, 255, 0.7) !important; color: white !important;",
+                                    },
+                                    # Also keep active/selected readable (click focus)
+                                    {
+                                        "selector": ".dash-spreadsheet-container .dash-spreadsheet-inner td.focused, "
+                                                    ".dash-spreadsheet-container .dash-spreadsheet-inner td.cell--selected",
+                                        "rule": "background-color: rgba(0, 123, 255, 0.40) !important; color: white !important;",
+                                    },
+                                ],
                             ),
                         ]
                     ),
@@ -534,6 +560,19 @@ def build_ml_cpo_right_panel():
                                     "backgroundColor": "rgba(255,255,255,0.08)",
                                     "color": "white",
                                 },
+                                css=[
+                                    # Row hover -> blue highlight instead of white
+                                    {
+                                        "selector": ".dash-spreadsheet-container .dash-spreadsheet-inner tr:hover td",
+                                        "rule": "background-color: rgba(0, 0, 255, 0.7) !important; color: white !important;",
+                                    },
+                                    # Also keep active/selected readable (click focus)
+                                    {
+                                        "selector": ".dash-spreadsheet-container .dash-spreadsheet-inner td.focused, "
+                                                    ".dash-spreadsheet-container .dash-spreadsheet-inner td.cell--selected",
+                                        "rule": "background-color: rgba(0, 123, 255, 0.40) !important; color: white !important;",
+                                    },
+                                ],
                             ),
                         ]
                     ),
@@ -555,10 +594,54 @@ def build_ml_cpo_right_panel():
                             ),
                             dbc.ModalBody(
                                 [
+                                    dbc.Row(
+                                        [
+                                            dbc.Col(
+                                                [
+                                                    dbc.Label("Equity view", style={"marginBottom": "2px"}),
+                                                    dbc.RadioItems(
+                                                        id="mlcpo-equity-mode",
+                                                        options=[
+                                                            {"label": "Raw P&L (cumulative)", "value": "raw"},
+                                                            {"label": "P&L per UID/day (cumulative)", "value": "per_uid"},
+                                                            {"label": "P&L per Margin/day (cumulative)", "value": "per_margin"},
+                                                            {"label": "PCR % (daily)", "value": "pcr_daily_pct"},
+                                                            {"label": "PCR % (rolling 20d)", "value": "pcr_roll20_pct"},
+                                                            {"label": "PCR % (rolling 60d)", "value": "pcr_roll60_pct"},
+                                                        ],
+                                                        value="raw",
+                                                        inline=True,
+                                                        style={"fontSize": "0.90rem"},
+                                                    ),
+
+                                                ],
+                                                width=8,
+                                            ),
+                                            dbc.Col(
+                                                [
+                                                    dbc.Label("Drawdown view", style={"marginBottom": "2px"}),
+                                                    dbc.RadioItems(
+                                                        id="mlcpo-dd-mode",
+                                                        options=[
+                                                            {"label": "DD ($)", "value": "dd_$"},
+                                                            {"label": "DD (%)", "value": "dd_pct"},
+                                                        ],
+                                                        value="dd_$",
+                                                        inline=True,
+                                                        style={"fontSize": "0.90rem"},
+                                                    ),
+                                                ],
+                                                width=4,
+                                            ),
+                                        ],
+                                        className="g-2",
+                                        style={"marginBottom": "8px"},
+                                    ),
                                     dcc.Graph(id="mlcpo-equity-graph", figure={}, config={"displayModeBar": True}),
                                     dcc.Graph(id="mlcpo-dd-graph", figure={}, config={"displayModeBar": True}),
                                 ]
                             ),
+
                         ],
                         id="mlcpo-charts-modal",
                         is_open=False,
@@ -631,6 +714,24 @@ def mlcpo_set_mode(n_monthly, n_weekly, current_mode):
     return mode, monthly_style, weekly_style, hint, run_label, monthly_color, weekly_color
 
 
+def _to_float_list_safe(s):
+    out = []
+    for v in s:
+        if v is None:
+            out.append(0.0)
+            continue
+        try:
+            fv = float(v)
+            # NaN check: NaN != NaN
+            if fv != fv:
+                out.append(0.0)
+            else:
+                out.append(fv)
+        except Exception:
+            out.append(0.0)
+    return out
+
+
 
 
 @callback(
@@ -691,6 +792,7 @@ def mlcpo_run_fwa(
             [],
             [],
             None,
+            None,
         )
 
 
@@ -711,8 +813,11 @@ def mlcpo_run_fwa(
             [],
             [],
             None,
+            None,
         )
-
+    
+    curves_payload = None # so it avoids error when run in MOnthly ml1.py that has NO charts in it
+    
     try:
         mode = (mode or "monthly").strip().lower()
 
@@ -740,19 +845,27 @@ def mlcpo_run_fwa(
                     curves_payload = {
                         "baseline": {
                             "date": bcurve["date"].astype(str).tolist(),
-                            "equity": bcurve["equity"].astype(float).tolist(),
-                            "dd": bcurve["dd"].astype(float).tolist(),
-                            "dd_pct": bcurve["dd_pct"].astype(float).tolist(),
+                            "pnl_day": bcurve["pnl_day"].astype(float).tolist(),
+                            "uid_day": bcurve["uid_day"].astype(float).tolist(),
+                            "margin_day": bcurve["margin_day"].astype(float).tolist(),
+                            "dd_raw": bcurve["dd_raw"].astype(float).tolist(),
+                            "dd_raw_pct": bcurve["dd_raw_pct"].astype(float).tolist(),
+                            "premium_day": _to_float_list_safe(bcurve["premium_day"].tolist()),
+
                         },
                         "ml": {
                             "date": mcurve["date"].astype(str).tolist(),
-                            "equity": mcurve["equity"].astype(float).tolist(),
-                            "dd": mcurve["dd"].astype(float).tolist(),
-                            "dd_pct": mcurve["dd_pct"].astype(float).tolist(),
+                            "pnl_day": mcurve["pnl_day"].astype(float).tolist(),
+                            "uid_day": mcurve["uid_day"].astype(float).tolist(),
+                            "margin_day": mcurve["margin_day"].astype(float).tolist(),
+                            "dd_raw": mcurve["dd_raw"].astype(float).tolist(),
+                            "dd_raw_pct": mcurve["dd_raw_pct"].astype(float).tolist(),
+                            "premium_day": _to_float_list_safe(mcurve["premium_day"].tolist()),
                         },
                     }
             except Exception:
                 curves_payload = None
+
 
         else:
             # Monthly Static (ml1): IS/OoS/Step in months
@@ -941,14 +1054,166 @@ def mlcpo_run_fwa(
             None,
         )
 
-def _make_equity_fig(curves_payload: dict):
+
+def _cum_sum(vals):
+    out = []
+    s = 0.0
+    for v in vals:
+        s += float(v)
+        out.append(s)
+    return out
+
+def _make_equity_fig(curves_payload: dict, mode: str):
+    """
+    mode:
+      - raw: cum(pnl_day)
+      - per_uid: cum(pnl_day / uid_day)
+      - per_margin: cum(pnl_day / margin_day)
+    """
     fig = go.Figure()
-    b = curves_payload.get("baseline")
-    m = curves_payload.get("ml")
-    fig.add_trace(go.Scatter(x=b["date"], y=b["equity"], mode="lines", name="BASELINE"))
-    fig.add_trace(go.Scatter(x=m["date"], y=m["equity"], mode="lines", name="ML"))
+    
+    def _rolling_sum(vals, window: int):
+        out = []
+        s = 0.0
+        q = []
+        for v in vals:
+            v = float(v)
+            q.append(v)
+            s += v
+            if len(q) > window:
+                s -= q.pop(0)
+            out.append(s)
+        return out
+
+
+    def _series(label: str, series: dict):
+        dates = series.get("date", []) or []
+        pnl = series.get("pnl_day", []) or []
+        uid = series.get("uid_day", []) or []
+        mgn = series.get("margin_day", []) or []
+        prem = series.get("premium_day", []) or []
+
+        n = min(len(dates), len(pnl), len(uid), len(mgn), len(prem))
+
+        if n == 0:
+            return [], []
+
+        dates = dates[:n]
+        def _f(x):
+            try:
+                if x is None:
+                    return 0.0
+                v = float(x)
+                return 0.0 if v != v else v  # NaN -> 0
+            except Exception:
+                return 0.0
+        
+        pnl = [_f(x) for x in pnl[:n]]
+        uid = [_f(x) for x in uid[:n]]
+        mgn = [_f(x) for x in mgn[:n]]
+        prem = [_f(x) for x in prem[:n]]
+
+
+        if mode == "raw":
+            inc = pnl
+            ytitle = "Cumulative P&L ($)"
+
+        elif mode == "per_uid":
+            # normalize daily pnl by unique strategy count that day
+            inc = []
+            for p, u in zip(pnl, uid):
+                inc.append(p / u if u and u > 0 else 0.0)
+            ytitle = "Cumulative P&L per UID ($)"
+
+        elif mode == "per_margin":
+            # normalize daily pnl by margin used that day (unitless). Multiply by 10,000 for readability if you want.
+            inc = []
+            for p, mg in zip(pnl, mgn):
+                inc.append(p / mg if mg and mg > 0 else 0.0)
+            ytitle = "Cumulative P&L per $1 Margin (ratio)"
+
+        elif mode == "pcr_daily_pct":
+            # PCR % per day = 100 * pnl_day / abs(premium_day)
+            y = []
+            for p, pr in zip(pnl, prem):
+                denom = abs(pr)
+                y.append(100.0 * (p / denom) if denom > 0 else 0.0)
+            ytitle = "PCR (%) — daily"
+            return dates, y, ytitle
+
+        elif mode == "pcr_roll20_pct":
+            # PCR % rolling 20d = 100 * sum(pnl) / sum(abs(premium))
+            prem_abs = [abs(x) for x in prem]
+            pnl_sum = _rolling_sum(pnl, 20)
+            prem_sum = _rolling_sum(prem_abs, 20)
+            y = []
+            for ps, prs in zip(pnl_sum, prem_sum):
+                y.append(100.0 * (ps / prs) if prs > 0 else 0.0)
+            ytitle = "PCR (%) — rolling 20d"
+            return dates, y, ytitle
+        elif mode == "pcr_roll60_pct":
+            # PCR % rolling 60d = 100 * sum(pnl) / sum(abs(premium))
+            prem_abs = [abs(x) for x in prem]
+            pnl_sum = _rolling_sum(pnl, 60)
+            prem_sum = _rolling_sum(prem_abs, 60)
+            y = []
+            for ps, prs in zip(pnl_sum, prem_sum):
+                y.append(100.0 * (ps / prs) if prs > 0 else 0.0)
+            ytitle = "PCR (%) — rolling 60d"
+            return dates, y, ytitle
+
+
+        else:
+            inc = pnl
+            ytitle = "Cumulative P&L ($)"
+
+        y = _cum_sum(inc)
+        return dates, y, ytitle
+
+    b = curves_payload.get("baseline") or {}
+    m = curves_payload.get("ml") or {}
+
+    xb, yb, ytitle = _series("BASELINE", b)
+    xm, ym, _ = _series("ML", m)
+
+    fig.add_trace(go.Scatter(x=xb, y=yb, mode="lines", name="BASELINE"))
+    fig.add_trace(go.Scatter(x=xm, y=ym, mode="lines", name="ML"))
+
     fig.update_layout(
-        title="Equity Curve (Realized, by close date)",
+        title="Equity (cumulative) — Raw vs Exposure-normalized",
+        yaxis_title=ytitle,
+        margin=dict(l=40, r=20, t=50, b=40),
+        template="plotly_dark",
+        legend=dict(orientation="h"),
+    )
+
+    return fig
+
+
+def _make_dd_fig(curves_payload: dict, mode: str):
+    fig = go.Figure()
+    b = curves_payload.get("baseline") or {}
+    m = curves_payload.get("ml") or {}
+
+    def _dd(series):
+        dates = series.get("date", []) or []
+        if mode == "dd_pct":
+            ddp = series.get("dd_raw_pct", []) or []
+            y = [100.0 * float(x) for x in ddp[:len(dates)]]
+            return dates, y, "Drawdown (%)"
+        dd = series.get("dd_raw", []) or []
+        y = [float(x) for x in dd[:len(dates)]]
+        return dates, y, "Drawdown ($)"
+
+    xb, yb, ytitle = _dd(b)
+    xm, ym, _ = _dd(m)
+
+    fig.add_trace(go.Scatter(x=xb, y=yb, mode="lines", name="BASELINE"))
+    fig.add_trace(go.Scatter(x=xm, y=ym, mode="lines", name="ML"))
+
+    fig.update_layout(
+        title="Drawdown (realized, raw)",
+        yaxis_title=ytitle,
         margin=dict(l=40, r=20, t=50, b=40),
         template="plotly_dark",
         legend=dict(orientation="h"),
@@ -956,19 +1221,6 @@ def _make_equity_fig(curves_payload: dict):
     return fig
 
 
-def _make_dd_fig(curves_payload: dict):
-    fig = go.Figure()
-    b = curves_payload.get("baseline")
-    m = curves_payload.get("ml")
-    fig.add_trace(go.Scatter(x=b["date"], y=b["dd"], mode="lines", name="BASELINE"))
-    fig.add_trace(go.Scatter(x=m["date"], y=m["dd"], mode="lines", name="ML"))
-    fig.update_layout(
-        title="Drawdown ($) (Realized, by close date)",
-        margin=dict(l=40, r=20, t=50, b=40),
-        template="plotly_dark",
-        legend=dict(orientation="h"),
-    )
-    return fig
 
 
 @callback(
@@ -977,24 +1229,41 @@ def _make_dd_fig(curves_payload: dict):
     Output("mlcpo-dd-graph", "figure"),
     Input("mlcpo-open-charts-btn", "n_clicks"),
     Input("mlcpo-close-charts-btn", "n_clicks"),
+    Input("mlcpo-equity-mode", "value"),
+    Input("mlcpo-dd-mode", "value"),
     State("mlcpo-charts-modal", "is_open"),
     State("mlcpo-curves-store", "data"),
     prevent_initial_call=True,
 )
-def mlcpo_toggle_charts(open_n, close_n, is_open, curves_payload):
+
+def mlcpo_toggle_charts(open_n, close_n, equity_mode, dd_mode, is_open, curves_payload):
     trig = ctx.triggered_id
 
+    # Close
     if trig == "mlcpo-close-charts-btn":
         return False, {}, {}
 
+    # If no data, do not crash; open modal but show empty figs
+    if not curves_payload or not curves_payload.get("baseline") or not curves_payload.get("ml"):
+        if trig == "mlcpo-open-charts-btn":
+            return False, {}, {}
+        return is_open, {}, {}
+
+    # Open (or update while open when modes change)
     if trig == "mlcpo-open-charts-btn":
-        if not curves_payload or not curves_payload.get("baseline") or not curves_payload.get("ml"):
-            # Open modal anyway; show empty figs if no data
-            return True, {}, {}
-        eq = _make_equity_fig(curves_payload)
-        dd = _make_dd_fig(curves_payload)
+        eq = _make_equity_fig(curves_payload, equity_mode or "raw")
+        dd = _make_dd_fig(curves_payload, dd_mode or "dd_$")
+
         return True, eq, dd
 
-    # Fallback: no change
+    # Mode toggles should update figures only if modal is open
+    if trig in ("mlcpo-equity-mode", "mlcpo-dd-mode"):
+        if not is_open:
+            return is_open, {}, {}
+        eq = _make_equity_fig(curves_payload, equity_mode or "raw")
+        dd = _make_dd_fig(curves_payload, dd_mode or "dd_$")
+        return is_open, eq, dd
+
     return is_open, {}, {}
+
 

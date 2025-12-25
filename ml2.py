@@ -36,10 +36,11 @@ from ml.ml_alloc import apply_max_allocation
 
 
 try:
-    from lightgbm import LGBMClassifier
+    from lightgbm import LGBMRegressor
 except Exception as e:
-    LGBMClassifier = None
+    LGBMRegressor = None
     _LGBM_IMPORT_ERROR = e
+
     
 # ---------------------------------------------------------------------
 # Global RNG seed for feature randomization (price, VIX, gap, etc.)
@@ -105,7 +106,7 @@ FEATURE_COLS = [
     "opening_vix",
     "gap",
 ]
-TARGET_COL = "label"
+TARGET_COL = "pnl"
 PNL_COL = "pnl"
 PNLR_COL = "pnl_R"
 PREMIUM_COL = "premium"
@@ -768,7 +769,7 @@ def _print_df(title: str, df: pd.DataFrame, max_rows: int = 40) -> None:
 # Core weekly FWA run
 # -------------------------
 def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
-    if LGBMClassifier is None:
+    if LGBMRegressor is None:
         raise ImportError(f"LightGBM is not available: {_LGBM_IMPORT_ERROR}")
 
     # Global RNG used by feature randomization in the OoS prediction panel
@@ -777,16 +778,17 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
     # Default LGBM parameters if none provided
     if params.lgbm_params is None:
         params.lgbm_params = dict(
-            n_estimators=275,
-            learning_rate=0.14,
-            num_leaves=17,
-            min_child_samples=10,
+            n_estimators=220,
+            learning_rate=0.05,
+            num_leaves=25,
             max_depth=-1,
-            subsample=0.12,
-            colsample_bytree=0.62,
-            reg_alpha=10.0,
-            reg_lambda=9.5,
-            min_gain_to_split=0,
+            min_data_in_leaf=50,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            #reg_alpha=10.0,
+            lambda_l2=25,
+            eature_fraction=0.8,
+            min_gain_to_split=0.05,
             random_state=RANDOM_SEED,
             n_jobs=-1,
             verbosity=-1,
@@ -797,6 +799,7 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
             force_col_wise=True,
             deterministic=True,
         )
+            
 
     # Load dataset
     df = pd.read_csv(params.dataset_csv_path)
@@ -838,7 +841,7 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
           f"max_allocation={params.max_allocation} "
           f"tolerance={params.allocation_tolerance}")
     print(f" features: {FEATURE_COLS}")
-    print(f" target: {TARGET_COL} (label = pnl_R > 0)")
+    print(f" target: {TARGET_COL} (regressed pnl)")
 
     oos_all_rows: List[pd.DataFrame] = []
     oos_selected_rows: List[pd.DataFrame] = []
@@ -977,11 +980,12 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
             ].copy()
         )
 
-        # Train model on IS
+        # Train model on IS (regress pnl)
         X_is = df_is[FEATURE_COLS]
-        y_is = df_is[TARGET_COL].astype(int)
-        model = LGBMClassifier(**params.lgbm_params)
+        y_is = df_is[TARGET_COL].astype(float)
+        model = LGBMRegressor(**params.lgbm_params)
         model.fit(X_is, y_is)
+
 
         # Build synthetic OoS prediction panel (daily x strategy)
         oos_days = (
@@ -1000,9 +1004,13 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
             is_end=is_to,
         )
 
-        # Predict per (day, strategy)
-        proba = model.predict_proba(pred_panel[FEATURE_COLS])[:, 1]
-        pred_panel["p_pred"] = proba
+        # Predict per (day, strategy) and convert to rank in [0,1]
+        y_hat = model.predict(pred_panel[FEATURE_COLS])
+        n_oos = len(y_hat)
+        ml_rank = pd.Series(y_hat).rank(method="average", ascending=True) / n_oos
+        # Re-use p_pred column to keep wiring unchanged; it now holds the rank
+        pred_panel["p_pred"] = ml_rank.values
+
         
         # ------------------------- SELECTION MODE ------------------------------
         # Top-K strategies PER DAY (not trades)

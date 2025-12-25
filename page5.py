@@ -361,6 +361,10 @@ def build_ml_cpo_right_panel():
                                                                     "label": "Bottom-K per day (by predicted prob)",
                                                                     "value": "bottomk_per_day",
                                                                 },
+                                                                {
+                                                                    "label": "Bottom-p percentile (remove worst p% by ML rank)",
+                                                                    "value": "bottomp_perc",
+                                                                },
                                                             ],
                                                             value="topk_per_day",
                                                             className="p26-dark-dropdown",
@@ -368,11 +372,15 @@ def build_ml_cpo_right_panel():
                                                             style={"fontSize": "0.85rem"},
                                                         ),
                                                     ],
-                                                    width=8,
+                                                    width=6,
                                                 ),
                                                 dbc.Col(
                                                     [
-                                                        dbc.Label("Top K"),
+                                                        # Label text will be updated dynamically by a callback
+                                                        dbc.Label(
+                                                            id="mlcpo-selection-param-label",
+                                                            children="Top K",
+                                                        ),
                                                         dbc.Input(
                                                             id="mlcpo-top-k",
                                                             type="number",
@@ -382,7 +390,7 @@ def build_ml_cpo_right_panel():
                                                             size="sm",
                                                         ),
                                                     ],
-                                                    width=2,
+                                                    width=3,
                                                 ),
                                                 dbc.Col(
                                                     [
@@ -739,6 +747,24 @@ def _to_float_list_safe(s):
     return out
 
 
+@callback(
+    Output("mlcpo-selection-param-label", "children"),
+    Input("mlcpo-selection-mode", "value"),
+)
+def mlcpo_update_selection_param_label(selection_mode):
+    """
+    Keep the numeric input label in sync with the selection mode:
+    - Top-K / Bottom-K: interpret value as K (count of strategies)
+    - Bottom-p: interpret value as p (percentile, e.g. 25 -> bottom 25%)
+    """
+    if selection_mode == "bottomk_per_day":
+        return "Bottom K"
+    elif selection_mode == "bottomp_perc":
+        return "Bottom p (%)"
+    else:
+        # default / topk
+        return "Top K"
+
 
 
 @callback(
@@ -809,7 +835,7 @@ def mlcpo_run_fwa(
     end_date = (end_date or "").strip() or None
 
     # --- NEW: allow Top-K and Bottom-K selection modes from the UI ---
-    if selection_mode not in ("topk_per_day", "bottomk_per_day"):
+    if selection_mode not in ("topk_per_day", "bottomk_per_day", "bottomp_perc"):
         return (
             "ERROR: Unsupported selection mode.",
             "danger",
@@ -837,6 +863,8 @@ def mlcpo_run_fwa(
                 selection_mode_internal = "top_k"
             elif selection_mode == "bottomk_per_day":
                 selection_mode_internal = "bottom_k"
+            elif selection_mode == "bottomp_perc":
+                selection_mode_internal = "bottom_p"
             else:
                 # Should not happen because of the earlier validation, but keep a hard guard
                 return (

@@ -71,6 +71,7 @@ class RunParamsWeekly:
     # ------------------ SELECTION MODE (NEW) ------------------
     # "top_k":   select Top K strategies per day (current behaviour)
     # "bottom_k": drop Bottom K strategies per day (avoid worst)
+    # "bottom_p":  drop all strategies whose ML rank is in the worst p% (global percentile)
     selection_mode: str = "top_k"
     # ---------------------------------------------------------
 
@@ -848,7 +849,7 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
     cycle_summaries: List[Dict[str, Any]] = []
     
     # Quartile diagnostic across cycles (based on ACTUAL P&L and pnl_R)
-    quartile_diag_rows = []
+    #quartile_diag_rows = []
     #---
 
 
@@ -908,68 +909,68 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
         # Use ALL OoS candidate trades for this cycle (df_oos_actual),
         # rank by ACTUAL P&L and pnl_R, and compare top vs bottom quartiles.
 
-        diag_df = df_oos_actual.copy()
-        n_diag = len(diag_df)
+        # diag_df = df_oos_actual.copy()
+        # n_diag = len(diag_df)
 
-        if n_diag >= 4:
-            # --- P&L (dollar) quartiles ---
-            q25_pnl = float(diag_df[PNL_COL].quantile(0.25))
-            q75_pnl = float(diag_df[PNL_COL].quantile(0.75))
+        # if n_diag >= 4:
+        #     # --- P&L (dollar) quartiles ---
+        #     q25_pnl = float(diag_df[PNL_COL].quantile(0.25))
+        #     q75_pnl = float(diag_df[PNL_COL].quantile(0.75))
 
-            pnl_bottom = diag_df[diag_df[PNL_COL] <= q25_pnl]
-            pnl_top = diag_df[diag_df[PNL_COL] >= q75_pnl]
+        #     pnl_bottom = diag_df[diag_df[PNL_COL] <= q25_pnl]
+        #     pnl_top = diag_df[diag_df[PNL_COL] >= q75_pnl]
 
-            pnl_top_mean = float(pnl_top[PNL_COL].mean()) if len(pnl_top) else np.nan
-            pnl_bot_mean = float(pnl_bottom[PNL_COL].mean()) if len(pnl_bottom) else np.nan
-            pnl_gap = (
-                pnl_top_mean - pnl_bot_mean
-                if (not np.isnan(pnl_top_mean) and not np.isnan(pnl_bot_mean))
-                else np.nan
-            )
+        #     pnl_top_mean = float(pnl_top[PNL_COL].mean()) if len(pnl_top) else np.nan
+        #     pnl_bot_mean = float(pnl_bottom[PNL_COL].mean()) if len(pnl_bottom) else np.nan
+        #     pnl_gap = (
+        #         pnl_top_mean - pnl_bot_mean
+        #         if (not np.isnan(pnl_top_mean) and not np.isnan(pnl_bot_mean))
+        #         else np.nan
+        #     )
 
-            # --- pnl_R quartiles ---
-            q25_R = float(diag_df[PNLR_COL].quantile(0.25))
-            q75_R = float(diag_df[PNLR_COL].quantile(0.75))
+        #     # --- pnl_R quartiles ---
+        #     q25_R = float(diag_df[PNLR_COL].quantile(0.25))
+        #     q75_R = float(diag_df[PNLR_COL].quantile(0.75))
 
-            R_bottom = diag_df[diag_df[PNLR_COL] <= q25_R]
-            R_top = diag_df[diag_df[PNLR_COL] >= q75_R]
+        #     R_bottom = diag_df[diag_df[PNLR_COL] <= q25_R]
+        #     R_top = diag_df[diag_df[PNLR_COL] >= q75_R]
 
-            R_top_mean = float(R_top[PNLR_COL].mean()) if len(R_top) else np.nan
-            R_bot_mean = float(R_bottom[PNLR_COL].mean()) if len(R_bottom) else np.nan
-            R_gap = (
-                R_top_mean - R_bot_mean
-                if (not np.isnan(R_top_mean) and not np.isnan(R_bot_mean))
-                else np.nan
-            )
+        #     R_top_mean = float(R_top[PNLR_COL].mean()) if len(R_top) else np.nan
+        #     R_bot_mean = float(R_bottom[PNLR_COL].mean()) if len(R_bottom) else np.nan
+        #     R_gap = (
+        #         R_top_mean - R_bot_mean
+        #         if (not np.isnan(R_top_mean) and not np.isnan(R_bot_mean))
+        #         else np.nan
+        #     )
 
-        else:
-            q25_pnl = q75_pnl = np.nan
-            pnl_top_mean = pnl_bot_mean = pnl_gap = np.nan
-            q25_R = q75_R = np.nan
-            R_top_mean = R_bot_mean = R_gap = np.nan
+        # else:
+        #     q25_pnl = q75_pnl = np.nan
+        #     pnl_top_mean = pnl_bot_mean = pnl_gap = np.nan
+        #     q25_R = q75_R = np.nan
+        #     R_top_mean = R_bot_mean = R_gap = np.nan
 
-        quartile_diag_rows.append(
-            dict(
-                cycle=c,
-                n_trades=int(n_diag),
-                q25_pnl=q25_pnl,
-                q75_pnl=q75_pnl,
-                q25_R=q25_R,
-                q75_R=q75_R,
-                pnl_top_mean=pnl_top_mean,
-                pnl_bot_mean=pnl_bot_mean,
-                pnl_gap=pnl_gap,
-                R_top_mean=R_top_mean,
-                R_bot_mean=R_bot_mean,
-                R_gap=R_gap,
-            )
-        )
+        # quartile_diag_rows.append(
+        #     dict(
+        #         cycle=c,
+        #         n_trades=int(n_diag),
+        #         q25_pnl=q25_pnl,
+        #         q75_pnl=q75_pnl,
+        #         q25_R=q25_R,
+        #         q75_R=q75_R,
+        #         pnl_top_mean=pnl_top_mean,
+        #         pnl_bot_mean=pnl_bot_mean,
+        #         pnl_gap=pnl_gap,
+        #         R_top_mean=R_top_mean,
+        #         R_bot_mean=R_bot_mean,
+        #         R_gap=R_gap,
+        #     )
+        # )
 
-        print(
-            f"CYCLE {c} quartiles | n_trades={n_diag} | "
-            f"P&L top_mean={pnl_top_mean:.2f} bot_mean={pnl_bot_mean:.2f} gap={pnl_gap:.2f} | "
-            f"R top_mean={R_top_mean:.4f} bot_mean={R_bot_mean:.4f} gap={R_gap:.4f}"
-        )
+        # print(
+        #     f"CYCLE {c} quartiles | n_trades={n_diag} | "
+        #     f"P&L top_mean={pnl_top_mean:.2f} bot_mean={pnl_bot_mean:.2f} gap={pnl_gap:.2f} | "
+        #     f"R top_mean={R_top_mean:.4f} bot_mean={R_bot_mean:.4f} gap={R_gap:.4f}"
+        # )
         # ----------------------- END QUARTILE DIAGNOSTIC --------------------------------------
 
 
@@ -1050,6 +1051,33 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
             # Keep all trades EXCEPT those in bottom K per day
             selected = drop_join[drop_join["drop_flag"].isna()].copy()
             selected = selected.drop(columns=["drop_flag"])
+        elif sel_mode == "bottom_p":
+            # -------- BOTTOM-p MODE: REMOVE WORST p% BY ML RANK (GLOBAL) --------
+            # UI passes p as e.g. 25 -> bottom 25%.
+            p_raw = float(params.top_k_per_day)
+
+            if p_raw <= 0:
+                # p <= 0 → no filtering; keep all OoS trades.
+                selected = df_oos_actual.copy()
+            else:
+                # Convert 25 -> 0.25 if needed
+                p = p_raw / 100.0 if p_raw > 1.0 else p_raw
+                # Clamp to [0, 1]
+                p = max(0.0, min(p, 1.0))
+
+                # Worst p% = rows with rank (p_pred) <= p
+                bottom_strats = pred_panel[pred_panel["p_pred"] <= p].copy()
+
+                to_drop = bottom_strats[["open_date", "strategy_uid"]].drop_duplicates()
+                to_drop["drop_flag"] = 1
+
+                drop_join = df_oos_actual.merge(
+                    to_drop, on=["open_date", "strategy_uid"], how="left"
+                )
+
+                # Keep all trades EXCEPT those in bottom p% by rank
+                selected = drop_join[drop_join["drop_flag"].isna()].copy()
+                selected = selected.drop(columns=["drop_flag"])
         else:
             # -------- TOP-K MODE (DEFAULT): KEEP BEST K STRATEGIES PER DAY --------
             top_strats = (
@@ -1113,40 +1141,40 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
         )
 
         # ------------------------- QUARTILE DIAGNOSTIC SUMMARY -------------------------
-    quartile_diag = pd.DataFrame(quartile_diag_rows)
-    if not quartile_diag.empty:
-        print("\nQUARTILE DIAGNOSTIC SUMMARY ACROSS CYCLES (ACTUAL P&L and pnl_R)")
-        print(quartile_diag.to_string(index=False))
+    # quartile_diag = pd.DataFrame(quartile_diag_rows)
+    # if not quartile_diag.empty:
+    #     print("\nQUARTILE DIAGNOSTIC SUMMARY ACROSS CYCLES (ACTUAL P&L and pnl_R)")
+    #     print(quartile_diag.to_string(index=False))
 
-        n_tot = int(len(quartile_diag))
+    #     n_tot = int(len(quartile_diag))
 
-        # How often top > bottom
-        n_pos_pnl = int((quartile_diag["pnl_gap"] > 0).sum())
-        n_pos_R = int((quartile_diag["R_gap"] > 0).sum())
+    #     # How often top > bottom
+    #     n_pos_pnl = int((quartile_diag["pnl_gap"] > 0).sum())
+    #     n_pos_R = int((quartile_diag["R_gap"] > 0).sum())
 
-        frac_pos_pnl = (n_pos_pnl / n_tot) if n_tot else np.nan
-        frac_pos_R = (n_pos_R / n_tot) if n_tot else np.nan
+    #     frac_pos_pnl = (n_pos_pnl / n_tot) if n_tot else np.nan
+    #     frac_pos_R = (n_pos_R / n_tot) if n_tot else np.nan
 
-        print(f"\nCycles with P&L top_mean > bottom_mean: {n_pos_pnl}/{n_tot} ({frac_pos_pnl:.2%})")
-        print(f"Cycles with R top_mean > bottom_mean:   {n_pos_R}/{n_tot} ({frac_pos_R:.2%})")
+    #     print(f"\nCycles with P&L top_mean > bottom_mean: {n_pos_pnl}/{n_tot} ({frac_pos_pnl:.2%})")
+    #     print(f"Cycles with R top_mean > bottom_mean:   {n_pos_R}/{n_tot} ({frac_pos_R:.2%})")
 
-        avg_pnl_top = float(quartile_diag["pnl_top_mean"].mean())
-        avg_pnl_bot = float(quartile_diag["pnl_bot_mean"].mean())
-        avg_pnl_gap = float(quartile_diag["pnl_gap"].mean())
+    #     avg_pnl_top = float(quartile_diag["pnl_top_mean"].mean())
+    #     avg_pnl_bot = float(quartile_diag["pnl_bot_mean"].mean())
+    #     avg_pnl_gap = float(quartile_diag["pnl_gap"].mean())
 
-        avg_R_top = float(quartile_diag["R_top_mean"].mean())
-        avg_R_bot = float(quartile_diag["R_bot_mean"].mean())
-        avg_R_gap = float(quartile_diag["R_gap"].mean())
+    #     avg_R_top = float(quartile_diag["R_top_mean"].mean())
+    #     avg_R_bot = float(quartile_diag["R_bot_mean"].mean())
+    #     avg_R_gap = float(quartile_diag["R_gap"].mean())
 
-        print(f"\nAvg P&L top_mean: {avg_pnl_top:.2f}")
-        print(f"Avg P&L bot_mean: {avg_pnl_bot:.2f}")
-        print(f"Avg P&L gap:      {avg_pnl_gap:.2f}")
+    #     print(f"\nAvg P&L top_mean: {avg_pnl_top:.2f}")
+    #     print(f"Avg P&L bot_mean: {avg_pnl_bot:.2f}")
+    #     print(f"Avg P&L gap:      {avg_pnl_gap:.2f}")
 
-        print(f"\nAvg R top_mean:   {avg_R_top:.4f}")
-        print(f"Avg R bot_mean:   {avg_R_bot:.4f}")
-        print(f"Avg R gap:        {avg_R_gap:.4f}")
-    else:
-        print("\nQUARTILE DIAGNOSTIC: no usable cycles (too few trades).")
+    #     print(f"\nAvg R top_mean:   {avg_R_top:.4f}")
+    #     print(f"Avg R bot_mean:   {avg_R_bot:.4f}")
+    #     print(f"Avg R gap:        {avg_R_gap:.4f}")
+    # else:
+    #     print("\nQUARTILE DIAGNOSTIC: no usable cycles (too few trades).")
     # -------------------------------------------------------------------------
 
 
@@ -1198,11 +1226,22 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
     #   - Baseline nominal = total unique strategies available in the (bounded) dataset used by this run
     #   - ML nominal = Top-K per day (unchanged, BY DESIGN, even if lots>1)
     baseline_nominal = int(df["strategy_uid"].nunique())
-    
-    if (params.selection_mode or "top_k").lower() == "bottom_k":
+
+    sel_mode_final = (params.selection_mode or "top_k").lower()
+    if sel_mode_final == "bottom_k":
+        # Baseline strategies minus K removed.
         ml_nominal = max(baseline_nominal - int(params.top_k_per_day), 1)
+    elif sel_mode_final == "bottom_p":
+        # Approximate nominal breadth as baseline * (1 - p),
+        # where p is the bottom percentile removed.
+        p_raw = float(params.top_k_per_day)
+        p = p_raw / 100.0 if p_raw > 1.0 else p_raw
+        p = max(0.0, min(p, 0.99))  # avoid collapsing to 0
+        ml_nominal = max(int(round(baseline_nominal * (1.0 - p))), 1)
     else:
+        # top_k: nominal breadth = K strategies
         ml_nominal = int(params.top_k_per_day)
+
 
     baseline_extra = _compute_participation_metrics(
         trades=base_all,

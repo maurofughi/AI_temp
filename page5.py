@@ -353,7 +353,14 @@ def build_ml_cpo_right_panel():
                                                         dcc.Dropdown(
                                                             id="mlcpo-selection-mode",
                                                             options=[
-                                                                {"label": "Top-K per day (by predicted prob)", "value": "topk_per_day"},
+                                                                {
+                                                                    "label": "Top-K per day (by predicted prob)",
+                                                                    "value": "topk_per_day",
+                                                                },
+                                                                {
+                                                                    "label": "Bottom-K per day (by predicted prob)",
+                                                                    "value": "bottomk_per_day",
+                                                                },
                                                             ],
                                                             value="topk_per_day",
                                                             className="p26-dark-dropdown",
@@ -801,7 +808,8 @@ def mlcpo_run_fwa(
     start_date = (start_date or "").strip() or None
     end_date = (end_date or "").strip() or None
 
-    if selection_mode != "topk_per_day":
+    # --- NEW: allow Top-K and Bottom-K selection modes from the UI ---
+    if selection_mode not in ("topk_per_day", "bottomk_per_day"):
         return (
             "ERROR: Unsupported selection mode.",
             "danger",
@@ -823,6 +831,28 @@ def mlcpo_run_fwa(
 
         if mode == "weekly":
             # Weekly CPO (ml2): IS in months, OoS/Step in weeks
+
+            # --- NEW: map UI selection_mode -> internal flag for ml2.RunParamsWeekly ---
+            if selection_mode == "topk_per_day":
+                selection_mode_internal = "top_k"
+            elif selection_mode == "bottomk_per_day":
+                selection_mode_internal = "bottom_k"
+            else:
+                # Should not happen because of the earlier validation, but keep a hard guard
+                return (
+                    "ERROR: Unsupported selection mode.",
+                    "danger",
+                    "",
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                    None,
+                    None,
+                )
+
             params2 = RunParamsWeekly(
                 dataset_csv_path=dataset_path,
                 start_date=start_date,
@@ -832,9 +862,11 @@ def mlcpo_run_fwa(
                 step_weeks=int(step_weeks),
                 anchored_type=str(anchored_type or "U"),
                 top_k_per_day=int(top_k),
+                selection_mode=selection_mode_internal,  # <<< NEW: pass through to ml2.py
                 verbose_cycles=False,  # UI should not spam console
             )
             out = run_fwa_weekly(params2)
+
             
             bcurve = out.get("baseline_curve")
             mcurve = out.get("ml_curve")

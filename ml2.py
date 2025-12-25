@@ -32,6 +32,9 @@ from typing import Dict, Any, Optional, Tuple, List
 import numpy as np
 import pandas as pd
 
+from ml.ml_alloc import apply_max_allocation
+
+
 try:
     from lightgbm import LGBMClassifier
 except Exception as e:
@@ -63,6 +66,12 @@ class RunParamsWeekly:
     step_weeks: int = 1
 
     anchored_type: str = "U"   # "U" (Unanchored) or "A" (Anchored)
+    
+    # ------------------ SELECTION MODE (NEW) ------------------
+    # "top_k":   select Top K strategies per day (current behaviour)
+    # "bottom_k": drop Bottom K strategies per day (avoid worst)
+    selection_mode: str = "top_k"
+    # ---------------------------------------------------------
 
     # selection
     top_k_per_day: int = 3
@@ -76,6 +85,13 @@ class RunParamsWeekly:
     # diagnostics
     debug_cycle_to_print: Optional[int] = 10   # e.g., 10 to print cycle 10
     debug_max_rows: int = 40                     # cap printed rows per table
+    
+    # allocation / sizing (new)
+    # "equal" → current behaviour (1 lot per selected trade)
+    # "max_allocation" → call ml_alloc.apply_max_allocation()
+    allocation_mode: str = "equal"
+    max_allocation: float = 6500.0      # example default; tune as needed
+    allocation_tolerance: float = 0.0    # slack on the cap
 
 
 
@@ -754,8 +770,11 @@ def _print_df(title: str, df: pd.DataFrame, max_rows: int = 40) -> None:
 def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
     if LGBMClassifier is None:
         raise ImportError(f"LightGBM is not available: {_LGBM_IMPORT_ERROR}")
+
+    # Global RNG used by feature randomization in the OoS prediction panel
     np.random.seed(int(RANDOM_SEED))
 
+    # Default LGBM parameters if none provided
     if params.lgbm_params is None:
         params.lgbm_params = dict(
             n_estimators=275,
@@ -778,7 +797,8 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
             force_col_wise=True,
             deterministic=True,
         )
-    
+
+    # Load dataset
     df = pd.read_csv(params.dataset_csv_path)
     df["open_dt"] = pd.to_datetime(df["open_dt"], errors="coerce")
     df["close_dt"] = pd.to_datetime(df["close_dt"], errors="coerce")
@@ -788,7 +808,7 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
     if missing:
         raise ValueError(f"Dataset missing required columns: {missing}")
 
-    # enforce structural fields only (no feature dropping)
+    # Enforce structural fields only (no feature dropping)
     df = df.dropna(subset=["open_dt", "close_dt", TARGET_COL, PNLR_COL, PNL_COL]).copy()
     df = df.sort_values("open_dt").reset_index(drop=True)
 
@@ -798,10 +818,9 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
     # Build trading week table from open dates (decision calendar)
     open_dates = df["open_dt"].dt.normalize().dropna().drop_duplicates().sort_values()
     weeks_df = _make_week_table(open_dates)
-
     cycles_df = _compute_cycles_weekly(params, data_start, data_end, weeks_df)
 
-    #------------------------ IS/OoS CYCLES PRINTING --------------------------------------------
+    # ------------------------ IS/OoS CYCLES PRINTING --------------------------------------------
     # print("\nCYCLES (weekly cadence; W-FRI blocks on OPEN dates):")
     # if cycles_df.empty:
     #     print("No cycles could be created with the current parameters/date range.")
@@ -810,14 +829,25 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
 
     print("\nRUN PARAMS (WEEKLY CPO):")
     print(f" dataset: {params.dataset_csv_path}")
-    print(f" anchored_type: {params.anchored_type}  IS={params.is_months} months  OoS={params.oos_weeks} weeks  step={params.step_weeks} weeks")
+    print(
+        f" anchored_type: {params.anchored_type} "
+        f"IS={params.is_months} months OoS={params.oos_weeks} weeks step={params.step_weeks} weeks"
+    )
     print(f" top_k_per_day: {params.top_k_per_day}")
+    print(f" allocation_mode: {params.allocation_mode} "
+          f"max_allocation={params.max_allocation} "
+          f"tolerance={params.allocation_tolerance}")
     print(f" features: {FEATURE_COLS}")
     print(f" target: {TARGET_COL} (label = pnl_R > 0)")
 
-    oos_all_rows = []
-    oos_selected_rows = []
-    cycle_summaries = []
+    oos_all_rows: List[pd.DataFrame] = []
+    oos_selected_rows: List[pd.DataFrame] = []
+    cycle_summaries: List[Dict[str, Any]] = []
+    
+    # Quartile diagnostic across cycles (based on ACTUAL P&L and pnl_R)
+    quartile_diag_rows = []
+    #---
+
 
     if cycles_df.empty:
         base_all = pd.DataFrame()
@@ -838,58 +868,118 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
         oos_from, oos_to = cy["OoS_from"], cy["OoS_to"]
 
         # IS: outcomes known by close_dt
-        df_is = df[(df["close_dt"].dt.normalize() >= is_from) & (df["close_dt"].dt.normalize() <= is_to)].copy()
+        df_is = df[
+            (df["close_dt"].dt.normalize() >= is_from)
+            & (df["close_dt"].dt.normalize() <= is_to)
+        ].copy()
 
         # OoS actual candidates: decisions by open_dt
-        df_oos_actual = df[(df["open_dt"].dt.normalize() >= oos_from) & (df["open_dt"].dt.normalize() <= oos_to)].copy()
-        
-        # -------------------------
-        # DEBUG: print IS slice and OoS actual candidates (for ONE selected cycle)
-        # -------------------------
-        # if params.debug_cycle_to_print is not None and c == int(params.debug_cycle_to_print):
-        #     cols_is = ["strategy_uid", "open_dt", "close_dt"] + FEATURE_COLS + [TARGET_COL, PNL_COL, PNLR_COL]
-        #     cols_is = [x for x in cols_is if x in df_is.columns]
-        
-        #     cols_oos = ["strategy_uid", "open_dt", "close_dt", PNL_COL, PNLR_COL, PREMIUM_COL]
-        #     cols_oos = [x for x in cols_oos if x in df_oos_actual.columns]
-        
-        #     _print_df(
-        #         f"DEBUG Cycle {c} | IS TRAIN SLICE (filtered by close_dt) | "
-        #         f"{is_from.date()} → {is_to.date()} | rows={len(df_is)} | cols={cols_is}",
-        #         df_is[cols_is].sort_values(["close_dt", "open_dt", "strategy_uid"]).tail(params.debug_max_rows),
-        #         max_rows=int(params.debug_max_rows),
-        #     )
-        
-        #     _print_df(
-        #         f"DEBUG Cycle {c} | OoS ACTUAL CANDIDATES (filtered by open_dt) | "
-        #         f"{oos_from.date()} → {oos_to.date()} | rows={len(df_oos_actual)}",
-        #         df_oos_actual[cols_oos].sort_values(["open_dt", "strategy_uid"]),
-        #         max_rows=int(params.debug_max_rows),
-        #     )
-        #-----------------------------------------------------------------------
-        
-        
+        df_oos_actual = df[
+            (df["open_dt"].dt.normalize() >= oos_from)
+            & (df["open_dt"].dt.normalize() <= oos_to)
+        ].copy()
+
+        # -----------------------------------------------------------------------
+        # Skip cycle if no IS/OoS rows
+        # -----------------------------------------------------------------------
         if df_is.empty or df_oos_actual.empty:
             if params.verbose_cycles:
                 print(
-                    f"\nCycle {c}: IS_close[{is_from.date()}→{is_to.date()}] rows={len(df_is)}  "
+                    f"\nCycle {c}: IS_close[{is_from.date()}→{is_to.date()}] rows={len(df_is)} "
                     f"OoS_open[{oos_from.date()}→{oos_to.date()}] rows={len(df_oos_actual)} -> SKIP"
                 )
             cycle_summaries.append(
-                dict(cycle=c, IS_rows=len(df_is), OoS_rows=len(df_oos_actual), selected_rows=0, pnlR_sum=0.0, winrate=np.nan)
+                dict(
+                    cycle=c,
+                    IS_rows=len(df_is),
+                    OoS_rows=len(df_oos_actual),
+                    selected_rows=0,
+                    pnlR_sum=0.0,
+                    winrate=np.nan,
+                )
             )
             continue
 
-        # Baseline: store ALL OoS actual trades (minimal cols) for this cycle
-        oos_all_rows.append(
-            df_oos_actual[["strategy_uid", "open_dt", "close_dt", PNL_COL, PNLR_COL, PREMIUM_COL, "margin_req"]].copy()
+        
+        # ------------------------- QUARTILE DIAGNOSTIC (per OoS week) -------------------------
+        # Use ALL OoS candidate trades for this cycle (df_oos_actual),
+        # rank by ACTUAL P&L and pnl_R, and compare top vs bottom quartiles.
+
+        diag_df = df_oos_actual.copy()
+        n_diag = len(diag_df)
+
+        if n_diag >= 4:
+            # --- P&L (dollar) quartiles ---
+            q25_pnl = float(diag_df[PNL_COL].quantile(0.25))
+            q75_pnl = float(diag_df[PNL_COL].quantile(0.75))
+
+            pnl_bottom = diag_df[diag_df[PNL_COL] <= q25_pnl]
+            pnl_top = diag_df[diag_df[PNL_COL] >= q75_pnl]
+
+            pnl_top_mean = float(pnl_top[PNL_COL].mean()) if len(pnl_top) else np.nan
+            pnl_bot_mean = float(pnl_bottom[PNL_COL].mean()) if len(pnl_bottom) else np.nan
+            pnl_gap = (
+                pnl_top_mean - pnl_bot_mean
+                if (not np.isnan(pnl_top_mean) and not np.isnan(pnl_bot_mean))
+                else np.nan
+            )
+
+            # --- pnl_R quartiles ---
+            q25_R = float(diag_df[PNLR_COL].quantile(0.25))
+            q75_R = float(diag_df[PNLR_COL].quantile(0.75))
+
+            R_bottom = diag_df[diag_df[PNLR_COL] <= q25_R]
+            R_top = diag_df[diag_df[PNLR_COL] >= q75_R]
+
+            R_top_mean = float(R_top[PNLR_COL].mean()) if len(R_top) else np.nan
+            R_bot_mean = float(R_bottom[PNLR_COL].mean()) if len(R_bottom) else np.nan
+            R_gap = (
+                R_top_mean - R_bot_mean
+                if (not np.isnan(R_top_mean) and not np.isnan(R_bot_mean))
+                else np.nan
+            )
+
+        else:
+            q25_pnl = q75_pnl = np.nan
+            pnl_top_mean = pnl_bot_mean = pnl_gap = np.nan
+            q25_R = q75_R = np.nan
+            R_top_mean = R_bot_mean = R_gap = np.nan
+
+        quartile_diag_rows.append(
+            dict(
+                cycle=c,
+                n_trades=int(n_diag),
+                q25_pnl=q25_pnl,
+                q75_pnl=q75_pnl,
+                q25_R=q25_R,
+                q75_R=q75_R,
+                pnl_top_mean=pnl_top_mean,
+                pnl_bot_mean=pnl_bot_mean,
+                pnl_gap=pnl_gap,
+                R_top_mean=R_top_mean,
+                R_bot_mean=R_bot_mean,
+                R_gap=R_gap,
+            )
         )
 
+        print(
+            f"CYCLE {c} quartiles | n_trades={n_diag} | "
+            f"P&L top_mean={pnl_top_mean:.2f} bot_mean={pnl_bot_mean:.2f} gap={pnl_gap:.2f} | "
+            f"R top_mean={R_top_mean:.4f} bot_mean={R_bot_mean:.4f} gap={R_gap:.4f}"
+        )
+        # ----------------------- END QUARTILE DIAGNOSTIC --------------------------------------
+
+
+        # Baseline: store ALL OoS actual trades (minimal cols) for this cycle
+        oos_all_rows.append(
+            df_oos_actual[
+                ["strategy_uid", "open_dt", "close_dt", PNL_COL, PNLR_COL, PREMIUM_COL, "margin_req"]
+            ].copy()
+        )
 
         # Train model on IS
         X_is = df_is[FEATURE_COLS]
         y_is = df_is[TARGET_COL].astype(int)
-
         model = LGBMClassifier(**params.lgbm_params)
         model.fit(X_is, y_is)
 
@@ -914,66 +1004,88 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
         proba = model.predict_proba(pred_panel[FEATURE_COLS])[:, 1]
         pred_panel["p_pred"] = proba
         
-        # -------------------------
-        # DEBUG: print the synthetic OoS prediction panel + per-day Top-K strategies
-        # -------------------------
-        # if params.debug_cycle_to_print is not None and c == int(params.debug_cycle_to_print):
-        #     cols_pred = ["open_date", "strategy_uid"] + FEATURE_COLS + ["p_pred"]
-        #     cols_pred = [x for x in cols_pred if x in pred_panel.columns]
-        
-        #     _print_df(
-        #         f"DEBUG Cycle {c} | OoS PREDICTION PANEL fed to predict_proba() | "
-        #         f"days={len(oos_days)} | strategies={len(strategy_uids)} | rows={len(pred_panel)}",
-        #         pred_panel[cols_pred].sort_values(["open_date", "p_pred"], ascending=[True, False]),
-        #         max_rows=int(params.debug_max_rows),
-        #     )
-        # -------------------------
-        
-        #========= SELECTION MODE ========================
+        # ------------------------- SELECTION MODE ------------------------------
         # Top-K strategies PER DAY (not trades)
+        # ------------------------- SELECTION MODE (TOP/BOTTOM K) ------------------------------
+        # NOTE:
+        #   - Baseline: df_oos_actual (all trades) is unchanged.
+        #   - ML: we either KEEP Top K strategies per day ("top_k"),
+        #         or DROP Bottom K strategies per day ("bottom_k").
+
         pred_panel["open_date"] = pred_panel["open_date"].dt.normalize()
-        top_strats = (
-            pred_panel.sort_values(
-                ["open_date", "p_pred", "strategy_uid"],
-                ascending=[True, False, True],
-                kind="mergesort",  # stable sort
-            )
-            .groupby("open_date", as_index=False)
-            .head(int(params.top_k_per_day))
-        )
-
-        
-        #---------DIAGNOSTIC------------
-        if params.debug_cycle_to_print is not None and c == int(params.debug_cycle_to_print):
-            _print_df(
-                f"DEBUG Cycle {c} | Top-{params.top_k_per_day} STRATEGIES PER DAY (from synthetic panel)",
-                top_strats[["open_date", "strategy_uid", "p_pred"]].sort_values(["open_date", "p_pred"], ascending=[True, False]),
-                max_rows=int(params.debug_max_rows),
-            )
-        #----------------------
-
-        # Select ALL actual trades for those strategies on those days
         df_oos_actual["open_date"] = df_oos_actual["open_dt"].dt.normalize()
-        key = top_strats[["open_date", "strategy_uid"]].copy()
-        key["sel_flag"] = 1
 
-        selected = df_oos_actual.merge(key, on=["open_date", "strategy_uid"], how="inner")
-        # keep only the core cols for global stitching
-        selected_core = selected[["strategy_uid", "open_dt", "close_dt", PNL_COL, PNLR_COL, PREMIUM_COL, "margin_req"]].copy()
+        sel_mode = (params.selection_mode or "top_k").lower()
+        k = int(params.top_k_per_day)
+
+        if sel_mode == "bottom_k":
+            # -------- BOTTOM-K MODE: REMOVE WORST K STRATEGIES PER DAY --------
+            # Sort so lowest p_pred are first within each day.
+            bottom_strats = (
+                pred_panel.sort_values(
+                    ["open_date", "p_pred", "strategy_uid"],
+                    ascending=[True, True, True],
+                    kind="mergesort",
+                )
+                .groupby("open_date", as_index=False)
+                .head(k)
+            )
+
+            # Build mask of (open_date, strategy_uid) to drop
+            to_drop = bottom_strats[["open_date", "strategy_uid"]].drop_duplicates()
+            to_drop["drop_flag"] = 1
+
+            drop_join = df_oos_actual.merge(
+                to_drop, on=["open_date", "strategy_uid"], how="left"
+            )
+
+            # Keep all trades EXCEPT those in bottom K per day
+            selected = drop_join[drop_join["drop_flag"].isna()].copy()
+            selected = selected.drop(columns=["drop_flag"])
+        else:
+            # -------- TOP-K MODE (DEFAULT): KEEP BEST K STRATEGIES PER DAY --------
+            top_strats = (
+                pred_panel.sort_values(
+                    ["open_date", "p_pred", "strategy_uid"],
+                    ascending=[True, False, True],
+                    kind="mergesort",
+                )
+                .groupby("open_date", as_index=False)
+                .head(k)
+            )
+
+            key = top_strats[["open_date", "strategy_uid", "p_pred"]].copy()
+            key["sel_flag"] = 1
+
+            selected = df_oos_actual.merge(
+                key, on=["open_date", "strategy_uid"], how="inner"
+            )
+        # ----------------------- END SELECTION MODE (TOP/BOTTOM K) ----------------------------
+
+        # keep only the core cols for global stitching (plus p_pred if present)
+        core_cols = ["strategy_uid", "open_dt", "close_dt", PNL_COL, PNLR_COL, PREMIUM_COL, "margin_req"]
+        if "p_pred" in selected.columns:
+            core_cols.append("p_pred")
+        selected_core = selected[core_cols].copy()
 
         oos_selected_rows.append(selected_core)
 
         pnlR_sum = float(selected_core[PNLR_COL].sum()) if len(selected_core) else 0.0
         pnlR_mean = float(selected_core[PNLR_COL].mean()) if len(selected_core) else 0.0
-        winrate = float((selected_core[PNLR_COL] > 0).mean()) if len(selected_core) else np.nan
+        winrate = (
+            float((selected_core[PNLR_COL] > 0).mean())
+            if len(selected_core)
+            else np.nan
+        )
 
         if params.verbose_cycles:
             print(
                 f"\nCycle {c}: "
-                f"IS_close[{is_from.date()}→{is_to.date()}] rows={len(df_is)}  "
-                f"OoS_open[{oos_from.date()}→{oos_to.date()}] rows={len(df_oos_actual)}  "
-                f"TopK_strats/day={params.top_k_per_day}  "
-                f"Selected_trades={len(selected_core)}  pnl_R(sum)={pnlR_sum:.4f}  winrate={winrate:.2%}"
+                f"IS_close[{is_from.date()}→{is_to.date()}] rows={len(df_is)} "
+                f"OoS_open[{oos_from.date()}→{oos_to.date()}] rows={len(df_oos_actual)} "
+                f"TopK_strats/day={params.top_k_per_day} "
+                f"Selected_trades={len(selected_core)} pnl_R(sum)={pnlR_sum:.4f} "
+                f"winrate={winrate:.2%}"
             )
 
         cycle_summaries.append(
@@ -992,27 +1104,98 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
             )
         )
 
+        # ------------------------- QUARTILE DIAGNOSTIC SUMMARY -------------------------
+    quartile_diag = pd.DataFrame(quartile_diag_rows)
+    if not quartile_diag.empty:
+        print("\nQUARTILE DIAGNOSTIC SUMMARY ACROSS CYCLES (ACTUAL P&L and pnl_R)")
+        print(quartile_diag.to_string(index=False))
+
+        n_tot = int(len(quartile_diag))
+
+        # How often top > bottom
+        n_pos_pnl = int((quartile_diag["pnl_gap"] > 0).sum())
+        n_pos_R = int((quartile_diag["R_gap"] > 0).sum())
+
+        frac_pos_pnl = (n_pos_pnl / n_tot) if n_tot else np.nan
+        frac_pos_R = (n_pos_R / n_tot) if n_tot else np.nan
+
+        print(f"\nCycles with P&L top_mean > bottom_mean: {n_pos_pnl}/{n_tot} ({frac_pos_pnl:.2%})")
+        print(f"Cycles with R top_mean > bottom_mean:   {n_pos_R}/{n_tot} ({frac_pos_R:.2%})")
+
+        avg_pnl_top = float(quartile_diag["pnl_top_mean"].mean())
+        avg_pnl_bot = float(quartile_diag["pnl_bot_mean"].mean())
+        avg_pnl_gap = float(quartile_diag["pnl_gap"].mean())
+
+        avg_R_top = float(quartile_diag["R_top_mean"].mean())
+        avg_R_bot = float(quartile_diag["R_bot_mean"].mean())
+        avg_R_gap = float(quartile_diag["R_gap"].mean())
+
+        print(f"\nAvg P&L top_mean: {avg_pnl_top:.2f}")
+        print(f"Avg P&L bot_mean: {avg_pnl_bot:.2f}")
+        print(f"Avg P&L gap:      {avg_pnl_gap:.2f}")
+
+        print(f"\nAvg R top_mean:   {avg_R_top:.4f}")
+        print(f"Avg R bot_mean:   {avg_R_bot:.4f}")
+        print(f"Avg R gap:        {avg_R_gap:.4f}")
+    else:
+        print("\nQUARTILE DIAGNOSTIC: no usable cycles (too few trades).")
+    # -------------------------------------------------------------------------
+
+
     # Stitch baseline + selected (no dedupe; multi-entry is normal)
     base_all = pd.concat(oos_all_rows, ignore_index=True) if oos_all_rows else pd.DataFrame()
     sel_all = pd.concat(oos_selected_rows, ignore_index=True) if oos_selected_rows else pd.DataFrame()
 
-    if not base_all.empty:
-        base_all = base_all.sort_values(["close_dt", "open_dt", "strategy_uid"]).reset_index(drop=True)
-    if not sel_all.empty:
-        sel_all = sel_all.sort_values(["close_dt", "open_dt", "strategy_uid"]).reset_index(drop=True)
+    # In max_allocation mode, apply allocation logic to BOTH baseline and ML.
+    # - Baseline: allow_extra_lots=False → at most 1 lot per trade under the cap.
+    # - ML: allow_extra_lots=True  → 1 lot if possible + extra lots by rank under the cap.
+    if params.allocation_mode.lower() == "max_allocation":
+        if not base_all.empty:
+            base_all = apply_max_allocation(
+                trades=base_all,
+                max_allocation=float(params.max_allocation),
+                margin_tolerance=float(params.allocation_tolerance),
+                allow_extra_lots=False,
+            )
+        if not sel_all.empty:
+            sel_all = apply_max_allocation(
+                trades=sel_all,
+                max_allocation=float(params.max_allocation),
+                margin_tolerance=float(params.allocation_tolerance),
+                allow_extra_lots=True,
+            )
 
+    # Sort after possible allocation
+    if not base_all.empty:
+        base_all = (
+            base_all.sort_values(["close_dt", "open_dt", "strategy_uid"])
+            .reset_index(drop=True)
+        )
+
+    if not sel_all.empty:
+        sel_all = (
+            sel_all.sort_values(["close_dt", "open_dt", "strategy_uid"])
+            .reset_index(drop=True)
+        )
+
+
+    # Metrics & curves
     baseline_metrics = _compute_metrics(base_all, initial_equity=float(params.initial_equity))
     ml_metrics = _compute_metrics(sel_all, initial_equity=float(params.initial_equity))
-    
+
     baseline_curve = _build_daily_series_with_exposure(base_all, float(params.initial_equity))
     ml_curve = _build_daily_series_with_exposure(sel_all, float(params.initial_equity))
-    
+
     # Nominal breadth:
-    # - Baseline nominal = total unique strategies available in the (bounded) dataset used by this run
-    # - ML nominal = Top-K per day
+    #   - Baseline nominal = total unique strategies available in the (bounded) dataset used by this run
+    #   - ML nominal = Top-K per day (unchanged, BY DESIGN, even if lots>1)
     baseline_nominal = int(df["strategy_uid"].nunique())
-    ml_nominal = int(params.top_k_per_day)
     
+    if (params.selection_mode or "top_k").lower() == "bottom_k":
+        ml_nominal = max(baseline_nominal - int(params.top_k_per_day), 1)
+    else:
+        ml_nominal = int(params.top_k_per_day)
+
     baseline_extra = _compute_participation_metrics(
         trades=base_all,
         initial_equity=float(params.initial_equity),
@@ -1024,15 +1207,19 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
         nominal_units=ml_nominal,
     )
 
-
     print("\nFINAL (stitched by close_dt):")
     print(f" BASELINE trades total: {baseline_metrics['trades']}")
-    print(f" BASELINE total pnl_R:  {baseline_metrics['total_pnlR']:.4f}")
-    print(f" BASELINE max DD $:     {baseline_metrics['max_dd_$']:.2f}   max DD %: {baseline_metrics['max_dd_%']:.2%}")
-
-    print(f" ML trades total:       {ml_metrics['trades']}")
-    print(f" ML total pnl_R:        {ml_metrics['total_pnlR']:.4f}")
-    print(f" ML max DD $:           {ml_metrics['max_dd_$']:.2f}   max DD %: {ml_metrics['max_dd_%']:.2%}")
+    print(f" BASELINE total pnl_R: {baseline_metrics['total_pnlR']:.4f}")
+    print(
+        f" BASELINE max DD $: {baseline_metrics['max_dd_$']:.2f} "
+        f"max DD %: {baseline_metrics['max_dd_%']:.2%}"
+    )
+    print(f" ML trades total: {ml_metrics['trades']}")
+    print(f" ML total pnl_R: {ml_metrics['total_pnlR']:.4f}")
+    print(
+        f" ML max DD $: {ml_metrics['max_dd_$']:.2f} "
+        f"max DD %: {ml_metrics['max_dd_%']:.2%}"
+    )
 
     return {
         "params": params,
@@ -1053,7 +1240,7 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
 # Spyder harness
 # -------------------------
 if __name__ == "__main__":
-    DATASET = r"C:\Users\mauro\MAURO\Spyder\Portfolio26\ml\datasets\panel__SNAP_YYYYMMDD_HHMMSS__N9.csv"
+    DATASET = r"C:\Users\mauro\MAURO\Spyder\Portfolio26\ml\datasets\panel__SNAP_20251218_194959__N9.csv"
 
     p = RunParamsWeekly(
         dataset_csv_path=DATASET,

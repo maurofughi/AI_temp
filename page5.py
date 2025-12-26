@@ -372,7 +372,7 @@ def build_ml_cpo_right_panel():
                                                             style={"fontSize": "0.85rem"},
                                                         ),
                                                     ],
-                                                    width=6,
+                                                    width=7,
                                                 ),
                                                 dbc.Col(
                                                     [
@@ -390,7 +390,7 @@ def build_ml_cpo_right_panel():
                                                             size="sm",
                                                         ),
                                                     ],
-                                                    width=3,
+                                                    width=2,
                                                 ),
                                                 dbc.Col(
                                                     [
@@ -760,7 +760,7 @@ def mlcpo_update_selection_param_label(selection_mode):
     if selection_mode == "bottomk_per_day":
         return "Bottom K"
     elif selection_mode == "bottomp_perc":
-        return "Bottom p (%)"
+        return "Bottom p %"
     else:
         # default / topk
         return "Top K"

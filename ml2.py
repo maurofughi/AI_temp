@@ -34,6 +34,8 @@ import pandas as pd
 
 from ml.ml_alloc import apply_max_allocation
 
+import os
+
 
 try:
     from lightgbm import LGBMRegressor
@@ -54,6 +56,9 @@ RANDOM_SEED = 113723324  # change this if you want different random paths
 @dataclass
 class RunParamsWeekly:
     dataset_csv_path: str
+    # optional path to extra daily feature file; if None, a default
+    # relative path is derived from dataset_csv_path
+    extra_features_csv_path: Optional[str] = None
 
     # optional overall bounds (date-only strings "YYYY-MM-DD")
     start_date: Optional[str] = None
@@ -92,7 +97,7 @@ class RunParamsWeekly:
     # "equal" → current behaviour (1 lot per selected trade)
     # "max_allocation" → call ml_alloc.apply_max_allocation()
     allocation_mode: str = "equal"
-    max_allocation: float = 6500.0      # example default; tune as needed
+    max_allocation: float = 12000.0      # example default; tune as needed
     allocation_tolerance: float = 0.0    # slack on the cap
 
 
@@ -816,8 +821,77 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
     df = df.dropna(subset=["open_dt", "close_dt", TARGET_COL, PNLR_COL, PNL_COL]).copy()
     df = df.sort_values("open_dt").reset_index(drop=True)
 
+    # Normalized date used both by extra features and by the OoS prediction panel
+    # (panel already uses 'open_date' as its key)
+    df["open_date"] = _date_floor_from_dt(df["open_dt"])
+
+    # ------------------------------------------------------------------
+    # Load and derive extra daily features (SPX/VIX and relatives)
+    # ------------------------------------------------------------------
+    # If not explicitly provided, derive a default relative path:
+    #   <ml_root>/features/P26_extra_features1.csv
+    # where <ml_root> is the parent of the 'datasets' directory.
+    extra_path = params.extra_features_csv_path
+    if extra_path is None:
+        dataset_dir = os.path.dirname(params.dataset_csv_path)
+        ml_root = os.path.dirname(dataset_dir)
+        extra_path = os.path.join(ml_root, "features", "P26_extra_features1.csv")
+
+    print(f"Loading extra features: {extra_path}")
+    if not os.path.exists(extra_path):
+        raise FileNotFoundError(f"Extra features file not found: {extra_path}")
+
+    feat_daily = pd.read_csv(extra_path)
+
+    if "tradedate" not in feat_daily.columns:
+        raise ValueError("Extra features file must have 'tradedate' column.")
+
+    # Normalize tradedate to open_date (date-only) for joining
+    feat_daily["open_date"] = pd.to_datetime(
+        feat_daily["tradedate"], errors="coerce"
+    ).dt.normalize()
+    feat_daily = feat_daily.drop(columns=["tradedate"])
+    feat_daily = feat_daily.sort_values("open_date").reset_index(drop=True)
+
+    # Make sure SPX and VIX are present for derived features
+    for _col in ["SPX", "VIX"]:
+        if _col not in feat_daily.columns:
+            raise ValueError(f"Extra features file must contain '{_col}' column for derived features.")
+
+    # --- SPX-based derived features ---
+    spx = feat_daily["SPX"].astype(float)
+
+    # 5-day and 20-day returns
+    feat_daily["spx_ret_5d"] = spx.pct_change(5)
+    feat_daily["spx_ret_20d"] = spx.pct_change(20)
+
+    # ATR14 proxy: rolling mean of |Δclose|
+    spx_tr = spx.diff().abs()
+    feat_daily["spx_atr14"] = spx_tr.rolling(14, min_periods=5).mean()
+
+    # Simple moving averages
+    feat_daily["spx_sma_20"] = spx.rolling(20, min_periods=5).mean()
+    feat_daily["spx_sma_50"] = spx.rolling(50, min_periods=10).mean()
+
+    # --- VIX-based derived features ---
+    vix = feat_daily["VIX"].astype(float)
+    feat_daily["vix_mean_5d"] = vix.rolling(5, min_periods=3).mean()
+    feat_daily["vix_mean_20d"] = vix.rolling(20, min_periods=5).mean()
+
+    # Identify which columns are the extra features (everything except the join key)
+    extra_feature_cols = [c for c in feat_daily.columns if c != "open_date"]
+    print("Extra feature columns:", extra_feature_cols)
+
+    # Merge extra features into the main dataset on open_date
+    df = df.merge(feat_daily, on="open_date", how="left")
+
+    # Full feature set = original FEATURE_COLS + extra daily features
+    base_feature_cols = FEATURE_COLS
+    feature_cols_loc = base_feature_cols + extra_feature_cols
+
     data_start = df["open_dt"].min().normalize()
     data_end = df["open_dt"].max().normalize()
+
 
     # Build trading week table from open dates (decision calendar)
     open_dates = df["open_dt"].dt.normalize().dropna().drop_duplicates().sort_values()
@@ -982,7 +1056,7 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
         )
 
         # Train model on IS (regress pnl)
-        X_is = df_is[FEATURE_COLS]
+        X_is = df_is[feature_cols_loc]
         y_is = df_is[TARGET_COL].astype(float)
         model = LGBMRegressor(**params.lgbm_params)
         model.fit(X_is, y_is)
@@ -1005,8 +1079,12 @@ def run_fwa_weekly(params: RunParamsWeekly) -> Dict[str, Any]:
             is_end=is_to,
         )
 
-        # Predict per (day, strategy) and convert to rank in [0,1]
-        y_hat = model.predict(pred_panel[FEATURE_COLS])
+        # Attach the same daily extra features used in training via open_date
+        pred_panel = pred_panel.merge(feat_daily, on="open_date", how="left")
+
+        # Predict per (day, strategy) on the full feature set and convert to rank in [0,1]
+        y_hat = model.predict(pred_panel[feature_cols_loc])
+        
         n_oos = len(y_hat)
         ml_rank = pd.Series(y_hat).rank(method="average", ascending=True) / n_oos
         # Re-use p_pred column to keep wiring unchanged; it now holds the rank

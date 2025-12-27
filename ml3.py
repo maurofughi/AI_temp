@@ -1,0 +1,1340 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Dec 26 12:06:55 2025
+
+@author: mauro
+
+
+Portfolio26 - Phase 3 ML
+ml3.py
+
+Daily CPO (approx) Walk-Forward Analysis (FWA) using LightGBM regressor proxy for ranking.
+
+
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Dict, Any, Optional, Tuple, List
+
+import numpy as np
+import pandas as pd
+
+from ml.ml_alloc import apply_max_allocation
+
+import os
+
+
+try:
+    from lightgbm import LGBMRegressor
+except Exception as e:
+    LGBMRegressor = None
+    _LGBM_IMPORT_ERROR = e
+    
+try:
+    import shap
+except ImportError:
+    shap = None
+
+
+    
+# ---------------------------------------------------------------------
+# Global RNG seed for feature randomization (price, VIX, gap, etc.)
+# ---------------------------------------------------------------------
+RANDOM_SEED = 113723324  # change this if you want different random paths
+
+
+# -------------------------
+# Parameters
+# -------------------------
+@dataclass
+class RunParamsDaily:
+    dataset_csv_path: str
+    # optional path to extra daily feature file; if None, a default
+    # relative path is derived from dataset_csv_path
+    extra_features_csv_path: Optional[str] = None
+
+    # optional overall bounds (date-only strings "YYYY-MM-DD")
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
+    # IS window length (months) - unchanged conceptually
+    is_months: int = 2
+
+    # OoS length (TRADING DAYS)
+    oos_days: int = 1
+
+    anchored_type: str = "U"   # "U" (Unanchored) or "A" (Anchored)
+    
+    # ------------------ SELECTION MODE (NEW) ------------------
+    # "top_k":   select Top K strategies per day (current behaviour)
+    # "bottom_k": drop Bottom K strategies per day (avoid worst)
+    # "bottom_p":  drop all strategies whose ML rank is in the worst p% (global percentile)
+    selection_mode: str = "top_k"
+    # ---------------------------------------------------------
+
+    # selection
+    top_k_per_day: int = 3
+
+    # model params
+    lgbm_params: Dict[str, Any] = None
+
+    verbose_cycles: bool = True
+    initial_equity: float = 100000.0
+    
+    # diagnostics
+    debug_cycle_to_print: Optional[int] = 10   # e.g., 10 to print cycle 10
+    debug_max_rows: int = 40                     # cap printed rows per table
+    
+    # allocation / sizing (new)
+    # "equal" → current behaviour (1 lot per selected trade)
+    # "max_allocation" → call ml_alloc.apply_max_allocation()
+    allocation_mode: str = "equal"
+    max_allocation: float = 12000.0      # example default; tune as needed
+    allocation_tolerance: float = 0.0    # slack on the cap
+    
+
+
+# Keep consistent with ml1.py columns
+FEATURE_COLS = [
+    "dow",
+    "open_minute",
+    "opening_price",
+    "premium",
+    "margin_req",
+    "opening_vix",
+    "gap",
+]
+TARGET_COL = "pnl"
+PNL_COL = "pnl"
+PNLR_COL = "pnl_R"
+PREMIUM_COL = "premium"
+
+
+# -------------------------
+# Utils: date parsing
+# -------------------------
+def _to_ts_date(d: str) -> pd.Timestamp:
+    # normalize to date-only midnight
+    return pd.Timestamp(d).normalize()
+
+
+def _date_floor_from_dt(s: pd.Series) -> pd.Series:
+    return pd.to_datetime(s, errors="coerce").dt.normalize()
+
+
+def _compute_cycles_daily(
+    params: RunParamsDaily,
+    data_start: pd.Timestamp,
+    data_end: pd.Timestamp,
+    open_dates: pd.Series,  # unique, normalized, sorted
+) -> pd.DataFrame:
+    """
+    Daily cycles (decision calendar = trading days from OPEN dates):
+
+    - OoS is defined by TRADING-DAY blocks on OPEN dates.
+    - Cycle step is ALWAYS 1 trading day (not a user param).
+    - IS_end = day before OoS_start (calendar day), same convention as ml2 weekly.
+    - IS_start:
+        Anchored: fixed at overall start
+        Unanchored: IS_start = IS_end - is_months + 1 day (month-offset)
+    """
+    if params.oos_days < 1:
+        raise ValueError("Invalid parameters: oos_days must be >= 1.")
+
+    # Overall bounds
+    start = _to_ts_date(params.start_date) if params.start_date else data_start.normalize()
+    end = _to_ts_date(params.end_date) if params.end_date else data_end.normalize()
+
+    start = max(start, data_start.normalize())
+    end = min(end, data_end.normalize())
+
+    d = pd.Series(pd.to_datetime(open_dates, errors="coerce")).dropna().dt.normalize()
+    d = d.drop_duplicates().sort_values().reset_index(drop=True)
+    if d.empty:
+        return pd.DataFrame(columns=["cycle", "IS_from", "IS_to", "OoS_from", "OoS_to"])
+
+    # We need IS_to to have at least is_months of history from start
+    # earliest_is_end is the earliest allowed IS_to
+    earliest_is_end = (start + pd.DateOffset(months=params.is_months)) - pd.Timedelta(days=1)
+    first_oos_start_min = earliest_is_end + pd.Timedelta(days=1)
+
+    # Candidate OoS starts must be trading days >= first_oos_start_min
+    candidate_idx = d.index[d >= first_oos_start_min]
+    if len(candidate_idx) == 0:
+        return pd.DataFrame(columns=["cycle", "IS_from", "IS_to", "OoS_from", "OoS_to"])
+
+    i0 = int(candidate_idx[0])
+
+    cycles = []
+    anchored_is_from = start
+
+    i = i0
+    safety = 0
+    while i < len(d):
+        oos_from = pd.Timestamp(d.iloc[i]).normalize()
+        if oos_from > end:
+            break
+
+        j = i + int(params.oos_days) - 1
+        if j >= len(d):
+            break
+
+        oos_to = pd.Timestamp(d.iloc[j]).normalize()
+        if oos_to > end:
+            break
+
+        is_to = (oos_from - pd.Timedelta(days=1)).normalize()
+
+        if params.anchored_type.upper() == "A":
+            is_from = anchored_is_from
+        else:
+            is_from = (is_to - pd.DateOffset(months=params.is_months) + pd.Timedelta(days=1)).normalize()
+            if is_from < start:
+                is_from = start
+
+        cycles.append(
+            {
+                "cycle": len(cycles) + 1,
+                "IS_from": is_from,
+                "IS_to": is_to,
+                "OoS_from": oos_from,
+                "OoS_to": oos_to,
+            }
+        )
+
+        # advance by 1 trading day
+        i += 1
+        safety += 1
+        if safety > 50000:
+            raise RuntimeError("Too many cycles generated; check daily parameters/date range.")
+
+    return pd.DataFrame(cycles)
+
+
+# -------------------------
+# Metrics (copied from ml1.py, corrected PCR usage)
+# -------------------------
+def _annualized_sharpe(daily_returns: pd.Series, periods_per_year: int = 252) -> float:
+    if daily_returns is None or len(daily_returns) < 2:
+        return np.nan
+    mu = float(daily_returns.mean())
+    sd = float(daily_returns.std(ddof=1))
+    if sd == 0:
+        return np.nan
+    return float((mu / sd) * np.sqrt(periods_per_year))
+
+
+def _build_realized(trades: pd.DataFrame, pnl_col: str, pnlr_col: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    if trades is None or trades.empty:
+        daily = pd.DataFrame(columns=["close_date", pnl_col, pnlr_col])
+        monthly = pd.DataFrame(columns=["close_month", pnl_col, pnlr_col])
+        return daily, monthly
+
+    t = trades.copy()
+    t["close_date"] = t["close_dt"].dt.date
+    t["close_month"] = t["close_dt"].dt.to_period("M").astype(str)
+
+    daily = (
+        t.groupby("close_date", as_index=False)[[pnl_col, pnlr_col]]
+         .sum()
+         .sort_values("close_date")
+         .reset_index(drop=True)
+    )
+
+    monthly = (
+        t.groupby("close_month", as_index=False)[[pnl_col, pnlr_col]]
+         .sum()
+         .sort_values("close_month")
+         .reset_index(drop=True)
+    )
+
+    return daily, monthly
+
+
+def _pcr_from_pnl_and_premium(pnl: pd.Series, premium: pd.Series) -> float:
+    if pnl is None or pnl.empty or premium is None or premium.empty:
+        return np.nan
+    total_pnl = float(pnl.sum())
+    total_abs_prem = float(premium.abs().sum())
+    if total_abs_prem == 0.0:
+        return np.nan
+    return total_pnl / total_abs_prem  # fraction
+
+
+# def _build_equity_dd_series(trades: pd.DataFrame, initial_equity: float) -> pd.DataFrame:
+#     """
+#     Builds daily equity & drawdown series from realized P&L by close date.
+#     Returns a dataframe with:
+#       date, pnl, equity, dd, dd_pct
+#     """
+#     if trades is None or trades.empty:
+#         return pd.DataFrame(columns=["date", "pnl", "equity", "dd", "dd_pct"])
+
+#     t = trades.copy()
+#     t["close_date"] = t["close_dt"].dt.normalize()
+
+#     daily = (
+#         t.groupby("close_date", as_index=False)[PNL_COL]
+#          .sum()
+#          .rename(columns={"close_date": "date", PNL_COL: "pnl"})
+#          .sort_values("date")
+#          .reset_index(drop=True)
+#     )
+
+#     daily["equity"] = float(initial_equity) + daily["pnl"].cumsum()
+#     daily["peak"] = daily["equity"].cummax()
+#     daily["dd"] = daily["equity"] - daily["peak"]
+#     daily["dd_pct"] = np.where(daily["peak"] != 0, daily["dd"] / daily["peak"], np.nan)
+
+#     return daily[["date", "pnl", "equity", "dd", "dd_pct"]]
+
+def _build_daily_series_with_exposure(trades: pd.DataFrame, initial_equity: float) -> pd.DataFrame:
+    """
+    Build daily realized P&L plus exposure proxies by close date:
+      - pnl_day: sum pnl for trades closing that date
+      - uid_day: number of unique strategy_uid among trades closing that date
+      - margin_day: sum margin_req among trades closing that date
+    Also includes cumulative raw equity and raw dd (optional, but fine to keep).
+    """
+    if trades is None or trades.empty:
+        return pd.DataFrame(columns=["date", "pnl_day", "uid_day", "margin_day"])
+
+    t = trades.copy()
+    t["date"] = t["close_dt"].dt.normalize()
+
+    g = t.groupby("date")
+
+    daily = pd.DataFrame({
+        "date": g.size().index,
+        "pnl_day": g[PNL_COL].sum().values,
+        "uid_day": g["strategy_uid"].nunique().values,
+        "margin_day": g["margin_req"].sum().values if "margin_req" in t.columns else 0.0,
+        "premium_day": g["premium"].sum().values if "premium" in t.columns else 0.0,
+    })
+
+
+    # Safety: avoid zeros
+    daily["uid_day"] = daily["uid_day"].replace(0, np.nan)
+    daily["margin_day"] = daily["margin_day"].replace(0, np.nan)
+
+    # Keep raw cumulative equity for reference if you want
+    daily["equity_raw"] = float(initial_equity) + daily["pnl_day"].cumsum()
+    daily["peak_raw"] = daily["equity_raw"].cummax()
+    daily["dd_raw"] = daily["equity_raw"] - daily["peak_raw"]
+    daily["dd_raw_pct"] = np.where(daily["peak_raw"] != 0, daily["dd_raw"] / daily["peak_raw"], np.nan)
+    daily["premium_day"] = daily["premium_day"].replace(0, np.nan)
+
+
+    return daily
+
+
+def _compute_metrics(trades: pd.DataFrame, initial_equity: float) -> Dict[str, Any]:
+    if trades is None or trades.empty:
+        return {
+            "trades": 0,
+            "total_pnl_$": 0.0,
+            "total_pnlR": 0.0,
+            "return_%": 0.0,
+            "PCR": np.nan,
+            "max_dd_$": 0.0,
+            "max_dd_%": 0.0,
+            "sharpe_daily": np.nan,
+            "win_month_%": np.nan,
+            "avg_month_pnl_$": np.nan,
+            "median_month_pnl_$": np.nan,
+            "best_month_pnl_$": np.nan,
+            "worst_month_pnl_$": np.nan,
+        }
+
+    daily, monthly = _build_realized(trades, pnl_col=PNL_COL, pnlr_col=PNLR_COL)
+
+    eq = float(initial_equity) + daily[PNL_COL].cumsum().to_numpy()
+    peak = np.maximum.accumulate(eq) if len(eq) else np.array([float(initial_equity)])
+    dd = eq - peak
+
+    max_dd_dollar = float(dd.min()) if len(dd) else 0.0
+    max_dd_pct = float((dd / peak).min()) if len(dd) else 0.0  # negative fraction
+
+    daily_ret = daily[PNL_COL] / float(initial_equity)
+    sharpe = _annualized_sharpe(daily_ret)
+
+    if monthly.empty:
+        win_month_pct = np.nan
+        avg_month = np.nan
+        med_month = np.nan
+        best_month = np.nan
+        worst_month = np.nan
+    else:
+        m = monthly[PNL_COL]
+        win_month_pct = float((m > 0).mean())
+        avg_month = float(m.mean())
+        med_month = float(m.median())
+        best_month = float(m.max())
+        worst_month = float(m.min())
+
+    total_pnl = float(trades[PNL_COL].sum())
+    total_pnlR = float(trades[PNLR_COL].sum())
+    ret_pct = float(total_pnl / float(initial_equity))
+
+    return {
+        "trades": int(len(trades)),
+        "total_pnl": total_pnl,
+        "total_pnlR": total_pnlR,
+        "return_pct": ret_pct,
+        "pcr": _pcr_from_pnl_and_premium(trades[PNL_COL], trades[PREMIUM_COL]),
+        "max_dd_$": max_dd_dollar,
+        "max_dd_%": max_dd_pct,
+        "sharpe_daily": sharpe,
+        "win_month_pct": win_month_pct,
+        "avg_month_pnl": avg_month,
+        "median_month_pnl": med_month,
+        "best_month_pnl": best_month,
+        "worst_month_pnl": worst_month,
+    }
+
+
+def _q(x: pd.Series, q: float) -> float:
+    if x is None or x.empty:
+        return np.nan
+    return float(x.quantile(q))
+
+
+def _compute_participation_metrics(
+    trades: pd.DataFrame,
+    initial_equity: float,
+    nominal_units: int,
+) -> Dict[str, Any]:
+    """
+    Participation / capacity metrics computed from realized trades.
+
+    We use open_date for participation (what triggers per day).
+    We also compute daily sums of margin_req and abs(premium) as a unit-capacity proxy.
+    """
+    if trades is None or trades.empty:
+        return {
+            "nominal_units": int(nominal_units),
+            "avg_trades_day": np.nan,
+            "med_trades_day": np.nan,
+            "p95_trades_day": np.nan,
+            "max_trades_day": np.nan,
+            "avg_unique_uid_day": np.nan,
+            "med_unique_uid_day": np.nan,
+            "p95_unique_uid_day": np.nan,
+            "max_unique_uid_day": np.nan,
+            "p95_margin_day": np.nan,
+            "max_margin_day": np.nan,
+            "p95_abs_premium_day": np.nan,
+            "max_abs_premium_day": np.nan,
+            "total_pnl_per_nominal_unit": np.nan,
+            "total_pnlR_per_nominal_unit": np.nan,
+            "total_pnl_per_avg_active_uid": np.nan,
+            "total_pnlR_per_avg_active_uid": np.nan,
+        }
+
+    t = trades.copy()
+    t["open_date"] = t["open_dt"].dt.normalize()
+
+    # trades per day
+    trades_day = t.groupby("open_date").size()
+
+    # unique strategy_uids per day
+    uid_day = t.groupby("open_date")["strategy_uid"].nunique()
+
+    # daily capacity proxies (require margin_req + premium columns present)
+    margin_day = t.groupby("open_date")["margin_req"].sum() if "margin_req" in t.columns else pd.Series(dtype=float)
+    abs_prem_day = t.groupby("open_date")["premium"].apply(lambda s: s.abs().sum()) if "premium" in t.columns else pd.Series(dtype=float)
+
+    # totals
+    total_pnl = float(t[PNL_COL].sum())
+    total_pnlR = float(t[PNLR_COL].sum())
+
+    # normalizations
+    nominal_units = max(int(nominal_units), 1)
+    avg_active_uid = float(uid_day.mean()) if len(uid_day) else np.nan
+    if avg_active_uid and avg_active_uid > 0:
+        pnl_per_avg_uid = total_pnl / avg_active_uid
+        pnlR_per_avg_uid = total_pnlR / avg_active_uid
+    else:
+        pnl_per_avg_uid = np.nan
+        pnlR_per_avg_uid = np.nan
+
+    return {
+        "nominal_units": int(nominal_units),
+
+        "avg_trades_day": float(trades_day.mean()) if len(trades_day) else np.nan,
+        "med_trades_day": float(trades_day.median()) if len(trades_day) else np.nan,
+        "p95_trades_day": _q(trades_day, 0.95) if len(trades_day) else np.nan,
+        "max_trades_day": float(trades_day.max()) if len(trades_day) else np.nan,
+
+        "avg_unique_uid_day": float(uid_day.mean()) if len(uid_day) else np.nan,
+        "med_unique_uid_day": float(uid_day.median()) if len(uid_day) else np.nan,
+        "p95_unique_uid_day": _q(uid_day, 0.95) if len(uid_day) else np.nan,
+        "max_unique_uid_day": float(uid_day.max()) if len(uid_day) else np.nan,
+
+        "p95_margin_day": _q(margin_day, 0.95) if len(margin_day) else np.nan,
+        "max_margin_day": float(margin_day.max()) if len(margin_day) else np.nan,
+
+        "p95_abs_premium_day": _q(abs_prem_day, 0.95) if len(abs_prem_day) else np.nan,
+        "max_abs_premium_day": float(abs_prem_day.max()) if len(abs_prem_day) else np.nan,
+
+        "total_pnl_per_nominal_unit": total_pnl / nominal_units,
+        "total_pnlR_per_nominal_unit": total_pnlR / nominal_units,
+
+        "total_pnl_per_avg_active_uid": pnl_per_avg_uid,
+        "total_pnlR_per_avg_active_uid": pnlR_per_avg_uid,
+    }
+
+
+
+# -------------------------
+# Weekly CPO prediction panel builder
+# -------------------------
+def _estimate_market_features_from_is(
+    df_is: pd.DataFrame,
+    is_end: pd.Timestamp,
+    atr_lookback_days: int = 10,
+) -> Dict[str, float]:
+    """
+    Estimate market-level features for the *next* week from the IS slice.
+
+    Rules (as agreed):
+
+    - opening_price:
+        • Use the last `atr_lookback_days` trading days in IS (by open_date).
+        • Take ALL opening_price values over that window.
+        • mean  = average of those prices
+        • std   = std of those prices  (proxy for ATR in price terms).
+
+    - opening_vix:
+        • Take the last calendar month inside IS (from first-of-month up to `is_end`).
+        • Compute mean VIX over that window.
+        • Set sigma as:
+              mean >= 25        →  8% of mean
+              17 <= mean < 25   →  6% of mean
+              0 < mean < 17     →  9% of mean
+
+    - gap:
+        • Use *all* IS rows to compute mean and std of gap.
+        • Later we will draw from N(mean, std) per OoS day.
+
+    Returns:
+        {
+            "price_mean", "price_std",
+            "vix_mean", "vix_std",
+            "gap_mean", "gap_std",
+        }
+    """
+    if df_is.empty:
+        return {
+            "price_mean": np.nan,
+            "price_std": 0.0,
+            "vix_mean": np.nan,
+            "vix_std": 0.0,
+            "gap_mean": 0.0,
+            "gap_std": 0.0,
+        }
+
+    tmp = df_is.copy()
+    tmp["open_date"] = tmp["open_dt"].dt.normalize()
+
+    # --- opening_price: use last N trading days in IS
+    dates_all = (
+        tmp["open_date"]
+        .dropna()
+        .drop_duplicates()
+        .sort_values()
+        .tolist()
+    )
+    if dates_all:
+        if len(dates_all) > atr_lookback_days:
+            last_dates = dates_all[-atr_lookback_days:]
+        else:
+            last_dates = dates_all
+
+        sl_price = tmp[tmp["open_date"].isin(last_dates)]
+        price_series = sl_price["opening_price"].dropna() if "opening_price" in sl_price.columns else pd.Series([], dtype=float)
+        if not price_series.empty:
+            price_mean = float(price_series.mean())
+            price_std = float(price_series.std(ddof=0))
+        else:
+            price_mean = np.nan
+            price_std = 0.0
+    else:
+        price_mean = np.nan
+        price_std = 0.0
+
+    # --- opening_vix: last calendar month within IS
+    is_end_date = pd.to_datetime(is_end).normalize()
+    try:
+        last_month_start = is_end_date.replace(day=1)
+    except Exception:
+        last_month_start = is_end_date
+
+    mask_vix = (tmp["open_date"] >= last_month_start) & (tmp["open_date"] <= is_end_date)
+    vix_series = tmp.loc[mask_vix, "opening_vix"].dropna() if "opening_vix" in tmp.columns else pd.Series([], dtype=float)
+
+    if vix_series.empty and "opening_vix" in tmp.columns:
+        # fallback: all IS VIX values
+        vix_series = tmp["opening_vix"].dropna()
+
+    if not vix_series.empty:
+        vix_mean = float(vix_series.mean())
+        if vix_mean >= 25.0:
+            sigma_factor = 0.08
+        elif vix_mean >= 17.0:
+            sigma_factor = 0.06
+        elif vix_mean > 0.0:
+            sigma_factor = 0.09
+        else:
+            sigma_factor = 0.0
+        vix_std = float(vix_mean * sigma_factor)
+    else:
+        vix_mean = np.nan
+        vix_std = 0.0
+
+    # --- gap: full IS distribution
+    if "gap" in tmp.columns:
+        gap_series = tmp["gap"].dropna()
+    else:
+        gap_series = pd.Series([], dtype=float)
+
+    if not gap_series.empty:
+        gap_mean = float(gap_series.mean())
+        gap_std = float(gap_series.std(ddof=0))
+    else:
+        gap_mean = 0.0
+        gap_std = 0.0
+
+    return {
+        "price_mean": price_mean,
+        "price_std": price_std,
+        "vix_mean": vix_mean,
+        "vix_std": vix_std,
+        "gap_mean": gap_mean,
+        "gap_std": gap_std,
+    }
+
+
+
+
+def _strategy_typicals_from_is(df_is: pd.DataFrame) -> pd.DataFrame:
+    """
+    Strategy-specific typical features taken from IS.
+
+    Rules:
+    - open_minute: FIRST entry time in IS (min over open_minute).
+    - premium, margin_req: median over IS (per strategy).
+    """
+    g = df_is.groupby("strategy_uid", as_index=False).agg(
+        open_minute=("open_minute", "min"),
+        premium=("premium", "median"),
+        margin_req=("margin_req", "median"),
+    )
+    return g
+
+
+
+def _build_oos_prediction_panel(
+    df_all: pd.DataFrame,
+    df_is: pd.DataFrame,
+    oos_days: List[pd.Timestamp],
+    strategy_uids: List[str],
+    is_end: pd.Timestamp,
+) -> pd.DataFrame:
+    """
+    DAILY CPO version.
+
+    Build the structural OoS prediction panel (day × strategy):
+
+      - dow: from OoS day
+      - open_minute, premium, margin_req: per-strategy typicals from IS
+
+    The *market-level* features:
+      - opening_price
+      - opening_vix
+      - gap
+
+    are deliberately left as NaN here and will be filled in run_fwa_daily from
+    actual data (gap, SPX, daily VIX) with a LAST-RESORT fallback to
+    _estimate_market_features_from_is if still missing.
+    """
+
+    typ = _strategy_typicals_from_is(df_is)
+    # Ensure all strategies in this OoS block appear (even if some had no IS rows)
+    typ = typ.set_index("strategy_uid").reindex(strategy_uids).reset_index()
+
+    rows = []
+    # Keep dates ordered for determinism
+    for d in sorted(oos_days):
+        d_norm = d.normalize()
+        dow = int(d.dayofweek)
+
+        for _, r in typ.iterrows():
+            rows.append(
+                {
+                    "open_date": d_norm,
+                    "strategy_uid": r["strategy_uid"],
+                    "dow": dow,
+                    "open_minute": r["open_minute"],
+                    "premium": r["premium"],
+                    "margin_req": r["margin_req"],
+                    # These are filled later in run_fwa_daily
+                    "opening_price": np.nan,
+                    "opening_vix": np.nan,
+                    "gap": np.nan,
+                }
+            )
+
+    panel = pd.DataFrame(rows)
+
+    # Ensure all feature cols exist in the right shape
+    for c in FEATURE_COLS:
+        if c not in panel.columns:
+            panel[c] = np.nan
+
+    return panel
+
+
+
+
+#---------------DIAGNOSTIC PRINTOUTS CYCLES HELPERS
+def _print_df(title: str, df: pd.DataFrame, max_rows: int = 40) -> None:
+    print("\n" + "=" * 110)
+    print(title)
+    print("=" * 110)
+    if df is None:
+        print("<None>")
+        return
+    if df.empty:
+        print("<EMPTY>")
+        return
+
+    # Avoid pandas truncation surprises in console
+    with pd.option_context(
+        "display.max_rows", max_rows,
+        "display.max_columns", 200,
+        "display.width", 200,
+        "display.max_colwidth", 80,
+    ):
+        print(df.head(max_rows).to_string(index=False))
+    if len(df) > max_rows:
+        print(f"... ({len(df) - max_rows} more rows not shown)")
+
+
+# -------------------------
+# Core weekly FWA run
+# -------------------------
+def run_fwa_daily(params: RunParamsDaily) -> Dict[str, Any]:
+    if LGBMRegressor is None:
+        raise ImportError(f"LightGBM is not available: {_LGBM_IMPORT_ERROR}")
+
+    # Global RNG used by feature randomization in the OoS prediction panel
+    np.random.seed(int(RANDOM_SEED))
+
+    # Default LGBM parameters if none provided
+    if params.lgbm_params is None:
+        params.lgbm_params = dict(
+            n_estimators=220,
+            learning_rate=0.05,
+            num_leaves=25,
+            max_depth=-1,
+            min_data_in_leaf=50,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            #reg_alpha=10.0,
+            lambda_l2=25,
+            eature_fraction=0.8,
+            min_gain_to_split=0.05,
+            random_state=RANDOM_SEED,
+            n_jobs=-1,
+            verbosity=-1,
+            # ADD THESE 5 LINES (same as Optuna):
+            bagging_seed=RANDOM_SEED,
+            feature_fraction_seed=RANDOM_SEED,
+            data_random_seed=RANDOM_SEED,
+            force_col_wise=True,
+            deterministic=True,
+        )
+            
+
+    # Load dataset
+    df = pd.read_csv(params.dataset_csv_path)
+    df["open_dt"] = pd.to_datetime(df["open_dt"], errors="coerce")
+    df["close_dt"] = pd.to_datetime(df["close_dt"], errors="coerce")
+    
+    needed = ["open_dt", "close_dt", "strategy_uid"] + FEATURE_COLS + [TARGET_COL, PNL_COL, PNLR_COL]
+    missing = [c for c in needed if c not in df.columns]
+    if missing:
+        raise ValueError(f"Dataset missing required columns: {missing}")
+
+    # Enforce structural fields only (no feature dropping)
+    df = df.dropna(subset=["open_dt", "close_dt", TARGET_COL, PNLR_COL, PNL_COL]).copy()
+    df = df.sort_values("open_dt").reset_index(drop=True)
+
+    # Normalized date used both by extra features and by the OoS prediction panel
+    # (panel already uses 'open_date' as its key)
+    df["open_date"] = _date_floor_from_dt(df["open_dt"])
+
+    # ------------------------------------------------------------------
+    # Load and derive extra daily features (SPX/VIX and relatives)
+    # ------------------------------------------------------------------
+    # If not explicitly provided, derive a default relative path:
+    #   <ml_root>/features/P26_extra_features1.csv
+    # where <ml_root> is the parent of the 'datasets' directory.
+    extra_path = params.extra_features_csv_path
+    if extra_path is None:
+        dataset_dir = os.path.dirname(params.dataset_csv_path)
+        ml_root = os.path.dirname(dataset_dir)
+        extra_path = os.path.join(ml_root, "features", "P26_extra_features1.csv")
+
+    print(f"Loading extra features: {extra_path}")
+    if not os.path.exists(extra_path):
+        raise FileNotFoundError(f"Extra features file not found: {extra_path}")
+
+    feat_daily = pd.read_csv(extra_path)
+
+    if "tradedate" not in feat_daily.columns:
+        raise ValueError("Extra features file must have 'tradedate' column.")
+
+    # Normalize tradedate to open_date (date-only) for joining
+    feat_daily["open_date"] = pd.to_datetime(
+        feat_daily["tradedate"], errors="coerce"
+    ).dt.normalize()
+    feat_daily = feat_daily.drop(columns=["tradedate"])
+    feat_daily = feat_daily.sort_values("open_date").reset_index(drop=True)
+
+    # Make sure SPX and VIX are present for derived features
+    for _col in ["SPX", "VIX"]:
+        if _col not in feat_daily.columns:
+            raise ValueError(f"Extra features file must contain '{_col}' column for derived features.")
+            
+    # Optional: VIX-open per-day series for cleaner opening_vix (daily CPO only)
+    vix_open_df = None
+    vix_open_path = os.path.join(ml_root, "features", "P26_vix_open.csv")
+    if os.path.exists(vix_open_path):
+        print(f"Loading VIX-open series: {vix_open_path}")
+        tmp_vix = pd.read_csv(vix_open_path)
+        if not {"date", "vix_open"}.issubset(tmp_vix.columns):
+            raise ValueError("P26_vix_open.csv must have columns 'date' and 'vix_open'.")
+        tmp_vix["open_date"] = pd.to_datetime(
+            tmp_vix["date"], errors="coerce"
+        ).dt.normalize()
+        vix_open_df = (
+            tmp_vix.dropna(subset=["open_date"])
+                   .sort_values("open_date")
+                   .drop_duplicates(subset=["open_date"], keep="last")
+        )
+    else:
+        print(
+            f"WARNING: VIX-open file not found at {vix_open_path}; "
+            "Daily CPO will fall back to IS-based VIX estimates for opening_vix."
+        )
+
+    # --- SPX-based derived features ---
+    spx = feat_daily["SPX"].astype(float)
+
+    # 5-day and 20-day returns
+    feat_daily["spx_ret_5d"] = spx.pct_change(5)
+    feat_daily["spx_ret_20d"] = spx.pct_change(20)
+
+    # ATR14 proxy: rolling mean of |Δclose|
+    spx_tr = spx.diff().abs()
+    feat_daily["spx_atr14"] = spx_tr.rolling(14, min_periods=5).mean()
+
+    # Simple moving averages
+    feat_daily["spx_sma_20"] = spx.rolling(20, min_periods=5).mean()
+    feat_daily["spx_sma_50"] = spx.rolling(50, min_periods=10).mean()
+
+    # --- VIX-based derived features ---
+    vix = feat_daily["VIX"].astype(float)
+    feat_daily["vix_mean_5d"] = vix.rolling(5, min_periods=3).mean()
+    feat_daily["vix_mean_20d"] = vix.rolling(20, min_periods=5).mean()
+    
+    # Ensure sorted by date and compute previous-day SPX close
+    feat_daily = feat_daily.sort_values("open_date").reset_index(drop=True)
+    feat_daily["SPX_prev"] = feat_daily["SPX"].shift(1)
+
+    # Identify which columns are the extra features (everything except the join key)
+    extra_feature_cols = [
+    c for c in feat_daily.columns
+    if c not in ("open_date", "SPX_prev")
+    ]
+
+    print("Extra feature columns:", extra_feature_cols)
+
+    # Merge extra features into the main dataset on open_date
+    df = df.merge(feat_daily, on="open_date", how="left")
+
+    # Full feature set = original FEATURE_COLS + extra daily features
+    base_feature_cols = FEATURE_COLS
+    feature_cols_loc = base_feature_cols + extra_feature_cols
+
+    data_start = df["open_dt"].min().normalize()
+    data_end = df["open_dt"].max().normalize()
+
+
+    # Build trading day table from open dates (decision calendar)
+    open_dates = df["open_dt"].dt.normalize().dropna().drop_duplicates().sort_values()
+    cycles_df = _compute_cycles_daily(params, data_start, data_end, open_dates)
+
+    # ------------------------ IS/OoS CYCLES PRINTING --------------------------------------------
+    # print("\nCYCLES (daily cadence; trading days on OPEN dates):")
+    # if cycles_df.empty:
+    #     print("No cycles could be created with the current parameters/date range.")
+    # else:
+    #     print(cycles_df.to_string(index=False))
+
+    print("\nRUN PARAMS (DAILY CPO):")
+    print(f" dataset: {params.dataset_csv_path}")
+    print(
+        f" anchored_type: {params.anchored_type} "
+        f"IS={params.is_months} months OoS={params.oos_days} days step=1 day"
+    )
+    print(f" top_k_per_day: {params.top_k_per_day}")
+    print(
+        f" allocation_mode: {params.allocation_mode} "
+        f"max_allocation={params.max_allocation} "
+        f"tolerance={params.allocation_tolerance}"
+    )
+    print(f" features: {FEATURE_COLS}")
+    print(f" target: {TARGET_COL} (regressed pnl)")
+
+
+    oos_all_rows: List[pd.DataFrame] = []
+    oos_selected_rows: List[pd.DataFrame] = []
+    cycle_summaries: List[Dict[str, Any]] = []
+    
+
+    if cycles_df.empty:
+        base_all = pd.DataFrame()
+        sel_all = pd.DataFrame()
+        return {
+            "params": params,
+            "cycles": cycles_df,
+            "cycle_summaries": pd.DataFrame(),
+            "baseline_trades": base_all,
+            "selected_trades": sel_all,
+            "baseline_metrics": _compute_metrics(base_all, params.initial_equity),
+            "ml_metrics": _compute_metrics(sel_all, params.initial_equity),
+        }
+
+    for _, cy in cycles_df.iterrows():
+        c = int(cy["cycle"])
+        is_from, is_to = cy["IS_from"], cy["IS_to"]
+        oos_from, oos_to = cy["OoS_from"], cy["OoS_to"]
+
+        # IS: outcomes known by close_dt
+        df_is = df[
+            (df["close_dt"].dt.normalize() >= is_from)
+            & (df["close_dt"].dt.normalize() <= is_to)
+        ].copy()
+
+        # OoS actual candidates: decisions by open_dt
+        df_oos_actual = df[
+            (df["open_dt"].dt.normalize() >= oos_from)
+            & (df["open_dt"].dt.normalize() <= oos_to)
+        ].copy()
+
+        # -----------------------------------------------------------------------
+        # Skip cycle if no IS/OoS rows
+        # -----------------------------------------------------------------------
+        if df_is.empty or df_oos_actual.empty:
+            if params.verbose_cycles:
+                print(
+                    f"\nCycle {c}: IS_close[{is_from.date()}→{is_to.date()}] rows={len(df_is)} "
+                    f"OoS_open[{oos_from.date()}→{oos_to.date()}] rows={len(df_oos_actual)} -> SKIP"
+                )
+            cycle_summaries.append(
+                dict(
+                    cycle=c,
+                    IS_rows=len(df_is),
+                    OoS_rows=len(df_oos_actual),
+                    selected_rows=0,
+                    pnlR_sum=0.0,
+                    winrate=np.nan,
+                )
+            )
+            continue
+
+        
+        # Baseline: store ALL OoS actual trades (minimal cols) for this cycle
+        oos_all_rows.append(
+            df_oos_actual[
+                ["strategy_uid", "open_dt", "close_dt", PNL_COL, PNLR_COL, PREMIUM_COL, "margin_req"]
+            ].copy()
+        )
+
+        # Train model on IS (regress pnl)
+        X_is = df_is[feature_cols_loc]
+        y_is = df_is[TARGET_COL].astype(float)
+        model = LGBMRegressor(**params.lgbm_params)
+        model.fit(X_is, y_is)
+        
+        # Build synthetic OoS prediction panel (daily x strategy)
+        oos_days = (
+            df_oos_actual["open_dt"].dt.normalize()
+            .drop_duplicates()
+            .sort_values()
+            .tolist()
+        )
+        strategy_uids = sorted(df_oos_actual["strategy_uid"].dropna().unique().tolist())
+
+        pred_panel = _build_oos_prediction_panel(
+            df_all=df,
+            df_is=df_is,
+            oos_days=oos_days,
+            strategy_uids=strategy_uids,
+            is_end=is_to,
+        )
+
+        # Attach the same daily extra features used in training via open_date
+        pred_panel = pred_panel.merge(feat_daily, on="open_date", how="left")
+        
+        # ------------------------------------------------------------------
+        # DAILY CPO: fill core market features from real data first
+        #   - gap       from OoS trades (constant per day)
+        #   - open_price = SPX_prev_close + gap
+        #   - opening_vix from any daily VIX-open column you have (optional)
+        # Only if any of these are still NaN we call _estimate_market_features_from_is
+        # ------------------------------------------------------------------
+
+        # Make sure OoS actual trades have open_date
+        df_oos_actual["open_date"] = df_oos_actual["open_dt"].dt.normalize()
+
+        # 1) GAP: use actual per-day gap from OoS trades
+        gap_by_date = (
+            df_oos_actual
+            .dropna(subset=["gap"])
+            .groupby("open_date", as_index=False)["gap"]
+            .first()
+        )
+
+        pred_panel = pred_panel.merge(
+            gap_by_date, on="open_date", how="left", suffixes=("", "_from_oos")
+        )
+        if "gap_from_oos" in pred_panel.columns:
+            # Prefer real gap_from_oos; fall back to any pre-existing gap if needed
+            pred_panel["gap"] = pred_panel["gap_from_oos"].combine_first(pred_panel["gap"])
+            pred_panel = pred_panel.drop(columns=["gap_from_oos"])
+
+        # 2) OPENING PRICE: previous-day SPX close + gap
+        #    SPX_prev is SPX shifted by 1 day in feat_daily and merged by open_date.
+        if "SPX_prev" in pred_panel.columns:
+            op_series = pred_panel["SPX_prev"].astype(float) + pred_panel["gap"].astype(float)
+            mask_op = op_series.notna()
+            pred_panel.loc[mask_op, "opening_price"] = op_series[mask_op]
+
+        # 3) OPENING VIX: if we loaded a daily VIX-open series, merge it and map to opening_vix.
+        #    Otherwise leave NaN and let the fallback handle it.
+        if vix_open_df is not None:
+            pred_panel = pred_panel.merge(
+                vix_open_df[["open_date", "vix_open"]],
+                on="open_date",
+                how="left",
+            )
+            mask_v = pred_panel["vix_open"].notna()
+            pred_panel.loc[mask_v, "opening_vix"] = pred_panel.loc[mask_v, "vix_open"]
+            pred_panel = pred_panel.drop(columns=["vix_open"])
+
+
+        # --------- FALLBACK: only if any of the 3 core features is still missing ----------
+        core_cols = ["opening_price", "opening_vix", "gap"]
+        for col_core in core_cols:
+            if col_core not in pred_panel.columns:
+                pred_panel[col_core] = np.nan
+
+        if pred_panel[core_cols].isna().any(axis=1).any():
+            market = _estimate_market_features_from_is(df_is, is_end=is_to)
+
+            # opening_price fallback → price_mean
+            mask = pred_panel["opening_price"].isna()
+            if mask.any():
+                pred_panel.loc[mask, "opening_price"] = market.get("price_mean", np.nan)
+
+            # opening_vix fallback → vix_mean
+            mask = pred_panel["opening_vix"].isna()
+            if mask.any():
+                pred_panel.loc[mask, "opening_vix"] = market.get("vix_mean", np.nan)
+
+            # gap fallback → gap_mean (0 default)
+            mask = pred_panel["gap"].isna()
+            if mask.any():
+                pred_panel.loc[mask, "gap"] = market.get("gap_mean", 0.0)
+        # ------------------------------------------------------------------
+
+
+        # Predict per (day, strategy) on the full feature set and convert to rank in [0,1]
+        y_hat = model.predict(pred_panel[feature_cols_loc])
+        
+        n_oos = len(y_hat)
+        ml_rank = pd.Series(y_hat).rank(method="average", ascending=True) / n_oos
+        # Re-use p_pred column to keep wiring unchanged; it now holds the rank
+        pred_panel["p_pred"] = ml_rank.values
+        
+        # ---------------- DIAGNOSTIC PRINT FOR DAILY CPO (cycles 50 and 200) ----------------
+        # if c in (50, 200):
+        #     print("\n" + "=" * 100)
+        #     print(f"[DAILY DIAG] Cycle {c}")
+        #     print(f"[DAILY DIAG] IS_close : {is_from.date()} -> {is_to.date()}")
+        #     print(f"[DAILY DIAG] OoS_open : {oos_from.date()} -> {oos_to.date()}")
+        #     print(f"[DAILY DIAG] df_oos_actual rows : {len(df_oos_actual)}")
+        #     print(f"[DAILY DIAG] pred_panel rows    : {len(pred_panel)}")
+        
+        #     # Show all columns in the prediction panel
+        #     print("[DAILY DIAG] pred_panel columns:")
+        #     print(list(pred_panel.columns))
+        
+        #     # Show the feature columns used for training/prediction
+        #     print("[DAILY DIAG] feature_cols_loc used for model:")
+        #     print(feature_cols_loc)
+        
+        #     # Intersection of feature_cols_loc and actual pred_panel columns
+        #     diag_cols = [col for col in feature_cols_loc if col in pred_panel.columns]
+        #     print(f"[DAILY DIAG] feature columns present in pred_panel ({len(diag_cols)} cols):")
+        #     print(diag_cols)
+        
+        #     # Small preview of feature values
+        #     print("[DAILY DIAG] pred_panel[diag_cols].head(20):")
+        #     try:
+        #         print(pred_panel[diag_cols].head(20).to_string(index=False))
+        #     except Exception as e:
+        #         print(f"[DAILY DIAG] ERROR printing pred_panel[diag_cols].head(20): {e}")
+        
+        #     print("=" * 100 + "\n")
+        # ----------------------------------------------------------------------
+
+
+        
+        # ------------------------- SELECTION MODE ------------------------------
+        # Top-K strategies PER DAY (not trades)
+        # ------------------------- SELECTION MODE (TOP/BOTTOM K) ------------------------------
+        # NOTE:
+        #   - Baseline: df_oos_actual (all trades) is unchanged.
+        #   - ML: we either KEEP Top K strategies per day ("top_k"),
+        #         or DROP Bottom K strategies per day ("bottom_k").
+
+        pred_panel["open_date"] = pred_panel["open_date"].dt.normalize()
+        df_oos_actual["open_date"] = df_oos_actual["open_dt"].dt.normalize()
+
+        sel_mode = (params.selection_mode or "top_k").lower()
+        k = int(params.top_k_per_day)
+
+        if sel_mode == "bottom_k":
+            # -------- BOTTOM-K MODE: REMOVE WORST K STRATEGIES PER DAY --------
+            # Sort so lowest p_pred are first within each day.
+            bottom_strats = (
+                pred_panel.sort_values(
+                    ["open_date", "p_pred", "strategy_uid"],
+                    ascending=[True, True, True],
+                    kind="mergesort",
+                )
+                .groupby("open_date", as_index=False)
+                .head(k)
+            )
+
+            # Build mask of (open_date, strategy_uid) to drop
+            to_drop = bottom_strats[["open_date", "strategy_uid"]].drop_duplicates()
+            to_drop["drop_flag"] = 1
+
+            drop_join = df_oos_actual.merge(
+                to_drop, on=["open_date", "strategy_uid"], how="left"
+            )
+
+            # Keep all trades EXCEPT those in bottom K per day
+            selected = drop_join[drop_join["drop_flag"].isna()].copy()
+            selected = selected.drop(columns=["drop_flag"])
+        elif sel_mode == "bottom_p":
+            # -------- BOTTOM-p MODE: REMOVE WORST p% BY ML RANK (GLOBAL) --------
+            # UI passes p as e.g. 25 -> bottom 25%.
+            p_raw = float(params.top_k_per_day)
+
+            if p_raw <= 0:
+                # p <= 0 → no filtering; keep all OoS trades.
+                selected = df_oos_actual.copy()
+            else:
+                # Convert 25 -> 0.25 if needed
+                p = p_raw / 100.0 if p_raw > 1.0 else p_raw
+                # Clamp to [0, 1]
+                p = max(0.0, min(p, 1.0))
+
+                # Worst p% = rows with rank (p_pred) <= p
+                bottom_strats = pred_panel[pred_panel["p_pred"] <= p].copy()
+
+                to_drop = bottom_strats[["open_date", "strategy_uid"]].drop_duplicates()
+                to_drop["drop_flag"] = 1
+
+                drop_join = df_oos_actual.merge(
+                    to_drop, on=["open_date", "strategy_uid"], how="left"
+                )
+
+                # Keep all trades EXCEPT those in bottom p% by rank
+                selected = drop_join[drop_join["drop_flag"].isna()].copy()
+                selected = selected.drop(columns=["drop_flag"])
+        else:
+            # -------- TOP-K MODE (DEFAULT): KEEP BEST K STRATEGIES PER DAY --------
+            top_strats = (
+                pred_panel.sort_values(
+                    ["open_date", "p_pred", "strategy_uid"],
+                    ascending=[True, False, True],
+                    kind="mergesort",
+                )
+                .groupby("open_date", as_index=False)
+                .head(k)
+            )
+
+            key = top_strats[["open_date", "strategy_uid", "p_pred"]].copy()
+            key["sel_flag"] = 1
+
+            selected = df_oos_actual.merge(
+                key, on=["open_date", "strategy_uid"], how="inner"
+            )
+        # ----------------------- END SELECTION MODE (TOP/BOTTOM K) ----------------------------
+
+        # keep only the core cols for global stitching (plus p_pred if present)
+        core_cols = ["strategy_uid", "open_dt", "close_dt", PNL_COL, PNLR_COL, PREMIUM_COL, "margin_req"]
+        if "p_pred" in selected.columns:
+            core_cols.append("p_pred")
+        selected_core = selected[core_cols].copy()
+
+        oos_selected_rows.append(selected_core)
+
+        pnlR_sum = float(selected_core[PNLR_COL].sum()) if len(selected_core) else 0.0
+        pnlR_mean = float(selected_core[PNLR_COL].mean()) if len(selected_core) else 0.0
+        winrate = (
+            float((selected_core[PNLR_COL] > 0).mean())
+            if len(selected_core)
+            else np.nan
+        )
+
+        if params.verbose_cycles:
+            print(
+                f"\nCycle {c}: "
+                f"IS_close[{is_from.date()}→{is_to.date()}] rows={len(df_is)} "
+                f"OoS_open[{oos_from.date()}→{oos_to.date()}] rows={len(df_oos_actual)} "
+                f"TopK_strats/day={params.top_k_per_day} "
+                f"Selected_trades={len(selected_core)} pnl_R(sum)={pnlR_sum:.4f} "
+                f"winrate={winrate:.2%}"
+            )
+
+        cycle_summaries.append(
+            dict(
+                cycle=c,
+                IS_from=str(is_from.date()),
+                IS_to=str(is_to.date()),
+                OoS_from=str(oos_from.date()),
+                OoS_to=str(oos_to.date()),
+                IS_rows=int(len(df_is)),
+                OoS_rows=int(len(df_oos_actual)),
+                selected_rows=int(len(selected_core)),
+                pnlR_sum=pnlR_sum,
+                pnlR_mean=pnlR_mean,
+                winrate=winrate,
+            )
+        )
+
+        
+    # Stitch baseline + selected (no dedupe; multi-entry is normal)
+    base_all = pd.concat(oos_all_rows, ignore_index=True) if oos_all_rows else pd.DataFrame()
+    sel_all = pd.concat(oos_selected_rows, ignore_index=True) if oos_selected_rows else pd.DataFrame()
+
+    # In max_allocation mode, apply allocation logic to BOTH baseline and ML.
+    # - Baseline: allow_extra_lots=False → at most 1 lot per trade under the cap.
+    # - ML: allow_extra_lots=True  → 1 lot if possible + extra lots by rank under the cap.
+    if params.allocation_mode.lower() == "max_allocation":
+        if not base_all.empty:
+            base_all = apply_max_allocation(
+                trades=base_all,
+                max_allocation=float(params.max_allocation),
+                margin_tolerance=float(params.allocation_tolerance),
+                allow_extra_lots=False,
+            )
+        if not sel_all.empty:
+            sel_all = apply_max_allocation(
+                trades=sel_all,
+                max_allocation=float(params.max_allocation),
+                margin_tolerance=float(params.allocation_tolerance),
+                allow_extra_lots=True,
+            )
+
+    # Sort after possible allocation
+    if not base_all.empty:
+        base_all = (
+            base_all.sort_values(["close_dt", "open_dt", "strategy_uid"])
+            .reset_index(drop=True)
+        )
+
+    if not sel_all.empty:
+        sel_all = (
+            sel_all.sort_values(["close_dt", "open_dt", "strategy_uid"])
+            .reset_index(drop=True)
+        )
+
+
+    # Metrics & curves
+    baseline_metrics = _compute_metrics(base_all, initial_equity=float(params.initial_equity))
+    ml_metrics = _compute_metrics(sel_all, initial_equity=float(params.initial_equity))
+
+    baseline_curve = _build_daily_series_with_exposure(base_all, float(params.initial_equity))
+    ml_curve = _build_daily_series_with_exposure(sel_all, float(params.initial_equity))
+
+    # Nominal breadth:
+    #   - Baseline nominal = total unique strategies available in the (bounded) dataset used by this run
+    #   - ML nominal = Top-K per day (unchanged, BY DESIGN, even if lots>1)
+    baseline_nominal = int(df["strategy_uid"].nunique())
+
+    sel_mode_final = (params.selection_mode or "top_k").lower()
+    if sel_mode_final == "bottom_k":
+        # Baseline strategies minus K removed.
+        ml_nominal = max(baseline_nominal - int(params.top_k_per_day), 1)
+    elif sel_mode_final == "bottom_p":
+        # Approximate nominal breadth as baseline * (1 - p),
+        # where p is the bottom percentile removed.
+        p_raw = float(params.top_k_per_day)
+        p = p_raw / 100.0 if p_raw > 1.0 else p_raw
+        p = max(0.0, min(p, 0.99))  # avoid collapsing to 0
+        ml_nominal = max(int(round(baseline_nominal * (1.0 - p))), 1)
+    else:
+        # top_k: nominal breadth = K strategies
+        ml_nominal = int(params.top_k_per_day)
+
+
+    baseline_extra = _compute_participation_metrics(
+        trades=base_all,
+        initial_equity=float(params.initial_equity),
+        nominal_units=baseline_nominal,
+    )
+    ml_extra = _compute_participation_metrics(
+        trades=sel_all,
+        initial_equity=float(params.initial_equity),
+        nominal_units=ml_nominal,
+    )
+
+    print("\nFINAL (stitched by close_dt):")
+    print(f" BASELINE trades total: {baseline_metrics['trades']}")
+    print(f" BASELINE total pnl_R: {baseline_metrics['total_pnlR']:.4f}")
+    print(
+        f" BASELINE max DD $: {baseline_metrics['max_dd_$']:.2f} "
+        f"max DD %: {baseline_metrics['max_dd_%']:.2%}"
+    )
+    print(f" ML trades total: {ml_metrics['trades']}")
+    print(f" ML total pnl_R: {ml_metrics['total_pnlR']:.4f}")
+    print(
+        f" ML max DD $: {ml_metrics['max_dd_$']:.2f} "
+        f"max DD %: {ml_metrics['max_dd_%']:.2%}"
+    )
+
+    return {
+        "params": params,
+        "cycles": cycles_df,
+        "cycle_summaries": pd.DataFrame(cycle_summaries),
+        "baseline_trades": base_all,
+        "selected_trades": sel_all,
+        "baseline_metrics": baseline_metrics,
+        "ml_metrics": ml_metrics,
+        "baseline_extra_metrics": baseline_extra,
+        "ml_extra_metrics": ml_extra,
+        "baseline_curve": baseline_curve,
+        "ml_curve": ml_curve,
+    }

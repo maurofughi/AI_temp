@@ -22,6 +22,8 @@ import plotly.graph_objects as go
 
 from ml.ml1 import RunParams, run_fwa_single
 from ml.ml2 import RunParamsWeekly, run_fwa_weekly
+from ml.ml3 import RunParamsDaily, run_fwa_daily
+
 
 
 
@@ -138,6 +140,13 @@ def build_ml_cpo_right_panel():
                                                             dbc.Button(
                                                                 "Weekly (CPO)",
                                                                 id="mlcpo-mode-weekly-btn",
+                                                                n_clicks=0,
+                                                                color="secondary",
+                                                                size="sm",
+                                                            ),
+                                                            dbc.Button(
+                                                                "Daily (CPO)",
+                                                                id="mlcpo-mode-daily-btn",
                                                                 n_clicks=0,
                                                                 color="secondary",
                                                                 size="sm",
@@ -344,6 +353,37 @@ def build_ml_cpo_right_panel():
                                                 )
                                             ],
                                         ),
+                                        html.Div(
+                                            id="mlcpo-daily-params",
+                                            style={"display": "none"},
+                                            children=[
+                                                dbc.Row(
+                                                    [
+                                                        dbc.Col(
+                                                            [
+                                                                dbc.Label("OoS days"),
+                                                                dbc.Input(
+                                                                    id="mlcpo-oos-days",
+                                                                    type="number",
+                                                                    value=1,
+                                                                    min=1,
+                                                                    step=1,
+                                                                    size="sm",
+                                                                    style={
+                                                                        "backgroundColor": "#1e1e1e",
+                                                                        "color": "white",
+                                                                        "border": "1px solid #444",
+                                                                    },
+                                                                ),
+                                                            ],
+                                                            width=3,
+                                                        ),
+                                                    ],
+                                                    className="g-2 mt-1",
+                                                )
+                                            ],
+                                        ),
+
 
                                         dbc.Row(
                                             [
@@ -692,41 +732,55 @@ def mlcpo_refresh_datasets(_n):
     Output("mlcpo-mode", "data"),
     Output("mlcpo-monthly-params", "style"),
     Output("mlcpo-weekly-params", "style"),
+    Output("mlcpo-daily-params", "style"),
     Output("mlcpo-mode-hint", "children"),
     Output("mlcpo-run-btn", "children"),
     Output("mlcpo-mode-monthly-btn", "color"),
     Output("mlcpo-mode-weekly-btn", "color"),
+    Output("mlcpo-mode-daily-btn", "color"),
     Input("mlcpo-mode-monthly-btn", "n_clicks"),
     Input("mlcpo-mode-weekly-btn", "n_clicks"),
+    Input("mlcpo-mode-daily-btn", "n_clicks"),
     State("mlcpo-mode", "data"),
     prevent_initial_call=False,
 )
-def mlcpo_set_mode(n_monthly, n_weekly, current_mode):
+def mlcpo_set_mode(n_monthly, n_weekly, n_daily, current_mode):
     trig = ctx.triggered_id
-
-    # Initial page load: keep current_mode (defaults to "monthly")
     mode = current_mode or "monthly"
+
     if trig == "mlcpo-mode-monthly-btn":
         mode = "monthly"
     elif trig == "mlcpo-mode-weekly-btn":
         mode = "weekly"
+    elif trig == "mlcpo-mode-daily-btn":
+        mode = "daily"
 
     if mode == "weekly":
         monthly_style = {"display": "none"}
         weekly_style = {"display": "block"}
+        daily_style = {"display": "none"}
         hint = "Mode: Weekly (CPO)"
         run_label = "Run ML (Weekly CPO)"
-        monthly_color = "secondary"
-        weekly_color = "primary"
+        monthly_color, weekly_color, daily_color = "secondary", "primary", "secondary"
+
+    elif mode == "daily":
+        monthly_style = {"display": "none"}
+        weekly_style = {"display": "none"}
+        daily_style = {"display": "block"}
+        hint = "Mode: Daily (CPO)"
+        run_label = "Run ML (Daily CPO)"
+        monthly_color, weekly_color, daily_color = "secondary", "secondary", "primary"
+
     else:
         monthly_style = {"display": "block"}
         weekly_style = {"display": "none"}
+        daily_style = {"display": "none"}
         hint = "Mode: Monthly (Static)"
         run_label = "Run ML (Monthly Static)"
-        monthly_color = "primary"
-        weekly_color = "secondary"
+        monthly_color, weekly_color, daily_color = "primary", "secondary", "secondary"
 
-    return mode, monthly_style, weekly_style, hint, run_label, monthly_color, weekly_color
+    return mode, monthly_style, weekly_style, daily_style, hint, run_label, monthly_color, weekly_color, daily_color
+
 
 
 def _to_float_list_safe(s):
@@ -792,6 +846,7 @@ def mlcpo_update_selection_param_label(selection_mode):
     State("mlcpo-mode", "data"),
     State("mlcpo-oos-weeks", "value"),
     State("mlcpo-step-weeks", "value"),
+    State("mlcpo-oos-days", "value"),
     running=[(Output("mlcpo-run-btn", "disabled"), True, False)],
     prevent_initial_call=True,
 )
@@ -809,6 +864,7 @@ def mlcpo_run_fwa(
     mode,
     oos_weeks,
     step_weeks,
+    oos_days,
 ):
     
     print("ML CPO dataset_path =", repr(dataset_path))
@@ -890,15 +946,14 @@ def mlcpo_run_fwa(
                 step_weeks=int(step_weeks),
                 anchored_type=str(anchored_type or "U"),
                 top_k_per_day=int(top_k),
-                selection_mode=selection_mode_internal,  # <<< NEW: pass through to ml2.py
+                selection_mode=selection_mode_internal,  # pass-through to ml2.py
                 verbose_cycles=False,  # UI should not spam console
             )
             out = run_fwa_weekly(params2)
 
-            
             bcurve = out.get("baseline_curve")
             mcurve = out.get("ml_curve")
-            
+
             curves_payload = None
             try:
                 if bcurve is not None and not bcurve.empty and mcurve is not None and not mcurve.empty:
@@ -911,7 +966,89 @@ def mlcpo_run_fwa(
                             "dd_raw": bcurve["dd_raw"].astype(float).tolist(),
                             "dd_raw_pct": bcurve["dd_raw_pct"].astype(float).tolist(),
                             "premium_day": _to_float_list_safe(bcurve["premium_day"].tolist()),
+                        },
+                        "ml": {
+                            "date": mcurve["date"].astype(str).tolist(),
+                            "pnl_day": mcurve["pnl_day"].astype(float).tolist(),
+                            "uid_day": mcurve["uid_day"].astype(float).tolist(),
+                            "margin_day": mcurve["margin_day"].astype(float).tolist(),
+                            "dd_raw": mcurve["dd_raw"].astype(float).tolist(),
+                            "dd_raw_pct": mcurve["dd_raw_pct"].astype(float).tolist(),
+                            "premium_day": _to_float_list_safe(mcurve["premium_day"].tolist()),
+                        },
+                    }
+            except Exception:
+                curves_payload = None
 
+
+        elif mode == "daily":
+            # Daily CPO (ml3): IS in months, OoS in TRADING DAYS, step is implicitly 1 day
+
+            if oos_days is None or int(oos_days) < 1:
+                return (
+                    "ERROR: OoS days must be >= 1 for Daily CPO.",
+                    "danger",
+                    "",
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                    None,
+                    None,
+                )
+
+            # Map UI selection_mode -> internal flag for ml3.RunParamsDaily
+            if selection_mode == "topk_per_day":
+                selection_mode_internal = "top_k"
+            elif selection_mode == "bottomk_per_day":
+                selection_mode_internal = "bottom_k"
+            elif selection_mode == "bottomp_perc":
+                selection_mode_internal = "bottom_p"
+            else:
+                return (
+                    "ERROR: Unsupported selection mode.",
+                    "danger",
+                    "",
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                    None,
+                    None,
+                )
+
+            params3 = RunParamsDaily(
+                dataset_csv_path=dataset_path,
+                start_date=start_date,
+                end_date=end_date,
+                is_months=int(is_months),
+                oos_days=int(oos_days),
+                anchored_type=str(anchored_type or "U"),
+                top_k_per_day=int(top_k),
+                selection_mode=selection_mode_internal,
+                verbose_cycles=False,  # UI should not spam console
+            )
+            out = run_fwa_daily(params3)
+
+            bcurve = out.get("baseline_curve")
+            mcurve = out.get("ml_curve")
+
+            curves_payload = None
+            try:
+                if bcurve is not None and not bcurve.empty and mcurve is not None and not mcurve.empty:
+                    curves_payload = {
+                        "baseline": {
+                            "date": bcurve["date"].astype(str).tolist(),
+                            "pnl_day": bcurve["pnl_day"].astype(float).tolist(),
+                            "uid_day": bcurve["uid_day"].astype(float).tolist(),
+                            "margin_day": bcurve["margin_day"].astype(float).tolist(),
+                            "dd_raw": bcurve["dd_raw"].astype(float).tolist(),
+                            "dd_raw_pct": bcurve["dd_raw_pct"].astype(float).tolist(),
+                            "premium_day": _to_float_list_safe(bcurve["premium_day"].tolist()),
                         },
                         "ml": {
                             "date": mcurve["date"].astype(str).tolist(),
@@ -941,6 +1078,7 @@ def mlcpo_run_fwa(
                 verbose_cycles=False,  # UI should not spam console
             )
             out = run_fwa_single(params1)
+
 
         bm = out.get("baseline_metrics", {}) or {}
         mm = out.get("ml_metrics", {}) or {}

@@ -906,6 +906,8 @@ def run_fwa_daily(params: RunParamsDaily) -> Dict[str, Any]:
     oos_selected_rows: List[pd.DataFrame] = []
     cycle_summaries: List[Dict[str, Any]] = []
     
+    rank_diag_rows: List[Dict[str, Any]] = []  # NEW: DEBUG-ML
+    
 
     if cycles_df.empty:
         base_all = pd.DataFrame()
@@ -1068,12 +1070,78 @@ def run_fwa_daily(params: RunParamsDaily) -> Dict[str, Any]:
         # Predict per (day, strategy) on the full feature set and convert to rank in [0,1]
         y_hat = model.predict(pred_panel[feature_cols_loc])
         
+        # DEGUB-ML Keep raw prediction for diagnostics
+        pred_panel["y_hat_raw"] = y_hat
+        
         n_oos = len(y_hat)
         ml_rank = pd.Series(y_hat).rank(method="average", ascending=True) / n_oos
+        
+        #---- DEBUG-ML ---------------------------------------------------------------------
         # Re-use p_pred column to keep wiring unchanged; it now holds the rank
         pred_panel["p_pred"] = ml_rank.values
         
-        # ---------------- DIAGNOSTIC PRINT FOR DAILY CPO (cycles 50 and 200) ----------------
+        # For each OoS day and strategy_uid:
+        #   - rank predictions (1 = best predicted)
+        #   - rank actual dollar P&L (1 = best actual)
+        # Use PNL_COL (dollar P&L), not R.
+        
+        # Ensure open_date exists on OoS actual trades
+        df_oos_actual["open_date"] = df_oos_actual["open_dt"].dt.normalize()
+        
+        # Aggregate actual dollar P&L per (open_date, strategy_uid)
+        # If you already have one row per trade per day/strategy, this is just that value.
+        actual_panel = (
+            df_oos_actual
+            .groupby(["open_date", "strategy_uid"], as_index=False)[PNL_COL]
+            .sum()
+        )
+        
+        # Merge predictions with actuals on (open_date, strategy_uid)
+        diag_merged = pred_panel.merge(
+            actual_panel,
+            on=["open_date", "strategy_uid"],
+            how="left",
+            suffixes=("", "_actual"),
+        )
+        
+        # Keep only rows where we have actual P&L
+        diag_merged = diag_merged.dropna(subset=[PNL_COL])
+        
+        if not diag_merged.empty:
+            # For each OoS day, compute integer ranks 1..N
+            for day, g in diag_merged.groupby("open_date"):
+                g = g.copy()
+                n_day = len(g)
+        
+                # Predicted ranking: higher prediction = better, rank 1..N (1 = best)
+                g["pred_rank"] = g["y_hat_raw"].rank(
+                    method="first", ascending=False
+                ).astype(int)
+        
+                # Actual ranking: higher dollar P&L = better, rank 1..N (1 = best)
+                g["actual_rank"] = g[PNL_COL].rank(
+                    method="first", ascending=False
+                ).astype(int)
+        
+                # Store per-row diagnostics
+                for _, row in g.iterrows():
+                    rank_diag_rows.append(
+                        dict(
+                            cycle=c,
+                            oos_date=row["open_date"].date(),
+                            strategies_in_day=n_day,
+                            strategy_uid=row["strategy_uid"],
+                            pred_score=float(row["y_hat_raw"]),
+                            pred_rank=int(row["pred_rank"]),
+                            actual_pnl=float(row[PNL_COL]),
+                            actual_rank=int(row["actual_rank"]),
+                        )
+                    )
+        # ----------------------------------------end of DEBUG-ML ---------------------------
+
+
+        
+        # ---------------- DIAGNOSTIC PRINT FOR FEATURES DAILY CPO (cycles 50 and 200) ----------------
         # if c in (50, 200):
         #     print("\n" + "=" * 100)
         #     print(f"[DAILY DIAG] Cycle {c}")
@@ -1324,6 +1392,22 @@ def run_fwa_daily(params: RunParamsDaily) -> Dict[str, Any]:
         f" ML max DD $: {ml_metrics['max_dd_$']:.2f} "
         f"max DD %: {ml_metrics['max_dd_%']:.2%}"
     )
+    
+    # ------ DEBUG-ML ----------- WRITE RANKING DIAGNOSTICS TO CSV --------------------
+    if rank_diag_rows:
+        rank_diag_df = pd.DataFrame(rank_diag_rows)
+        out_dir = os.path.dirname(params.dataset_csv_path)
+        out_path = os.path.join(out_dir, "daily_rank_diag.csv")
+        rank_diag_df.to_csv(out_path, index=False)
+        print(f"[DAILY DEBUG] Saved ranking diagnostics to: {out_path}")
+        print(
+            "[DAILY DEBUG] Columns: cycle, oos_date, strategies_in_day, "
+            "strategy_uid, pred_score, pred_rank, actual_pnl, actual_rank"
+        )
+    else:
+        print("[DAILY DEBUG] No ranking diagnostics were collected (no OoS trades?).")
+    # -----------------------------------------------------------------------
+
 
     return {
         "params": params,

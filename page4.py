@@ -61,11 +61,11 @@ def build_phase3_right_panel():
             ),
 
             # -----------------------------------------------------------------
-            # ML Data Builder
+            # ML Data Builder - OLD CPO - Strategy level
             # -----------------------------------------------------------------
             dbc.Card(
                 [
-                    dbc.CardHeader(html.B("ML Data Builder")),
+                    dbc.CardHeader(html.B("ML Data Builder (Old CPO - strategy level)")),
                     dbc.CardBody(
                         [
                             html.Div(
@@ -81,7 +81,7 @@ def build_phase3_right_panel():
                                             id="ml-save-artifacts-toggle",
                                             options=[
                                                 {
-                                                    "label": "Save dataset artifact to disk (CSV) for inspection",
+                                                    "label": "Save dataset artifact to disk (CSV)",
                                                     "value": "save",
                                                 }
                                             ],
@@ -92,7 +92,7 @@ def build_phase3_right_panel():
                                     ),
                                     dbc.Col(
                                         dbc.Button(
-                                            "Build ML Panel Dataset",
+                                            "Build ML Snapshot Dataset",
                                             id="ml-build-panel-btn",
                                             color="primary",
                                             n_clicks=0,
